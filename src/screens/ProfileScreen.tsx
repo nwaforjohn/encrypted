@@ -229,6 +229,7 @@ export function ProfileScreen() {
               source={{ uri: item.imageUrl }}
               style={{ width: cell, height: cell, backgroundColor: theme.colors.surfaceAlt }}
             />
+            {item.mediaType === 'video' && <Text style={styles.videoBadge}>▶</Text>}
           </Pressable>
         )}
         ListEmptyComponent={
@@ -368,5 +369,14 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     textAlign: 'center',
     padding: theme.spacing(4),
+  },
+  videoBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 8,
+    color: '#fff',
+    fontSize: 14,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowRadius: 3,
   },
 });

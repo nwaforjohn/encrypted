@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,11 +14,13 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { theme } from '@/theme';
-import { social } from '@/api/social';
+import { social, type MediaType } from '@/api/social';
 import { useFeedStore } from '@/store/useFeedStore';
 import { PurchaseSheet } from '@/components/PurchaseSheet';
+import { MediaView } from '@/components/MediaView';
 import { PROMOTIONS } from '@/monetization/products';
 import { promotePost } from '@/monetization/iap';
+import { pickAndUpload } from '@/media/upload';
 import type { TabParamList } from '@/navigation/types';
 
 type Nav = BottomTabNavigationProp<TabParamList>;
@@ -33,23 +34,41 @@ export function NewPostScreen() {
   const prependPost = useFeedStore((s) => s.prependPost);
 
   const [imageUrl, setImageUrl] = useState('');
+  const [mediaType, setMediaType] = useState<MediaType>('image');
   const [caption, setCaption] = useState('');
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [promotePostId, setPromotePostId] = useState<string | null>(null);
   const [busySku, setBusySku] = useState<string | null>(null);
 
-  const canPost = looksLikeUrl(imageUrl) && !busy;
+  const canPost = looksLikeUrl(imageUrl) && !busy && !uploading;
 
   const reset = () => {
     setImageUrl('');
+    setMediaType('image');
     setCaption('');
+  };
+
+  const choose = async () => {
+    try {
+      setUploading(true);
+      const result = await pickAndUpload('media');
+      if (result) {
+        setImageUrl(result.url);
+        setMediaType(result.mediaType);
+      }
+    } catch (err) {
+      Alert.alert('Upload failed', String((err as Error)?.message ?? err));
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handlePost = async () => {
     if (!canPost) return;
     try {
       setBusy(true);
-      const { post } = await social.createPost(imageUrl.trim(), caption.trim());
+      const { post } = await social.createPost(imageUrl.trim(), caption.trim(), mediaType);
       prependPost(post);
       reset();
       Alert.alert('Posted!', 'Your photo is live. Want more reach?', [
@@ -86,13 +105,26 @@ export function NewPostScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.preview}>
           {looksLikeUrl(imageUrl) ? (
-            <Image source={{ uri: imageUrl }} style={styles.previewImg} resizeMode="cover" />
+            <MediaView
+              uri={imageUrl}
+              mediaType={mediaType}
+              style={styles.previewImg}
+              resizeMode="cover"
+            />
           ) : (
-            <Text style={styles.previewHint}>Image preview</Text>
+            <Text style={styles.previewHint}>Photo / video preview</Text>
           )}
         </View>
 
-        <Text style={styles.label}>Image URL</Text>
+        <Pressable style={styles.chooseBtn} onPress={choose} disabled={uploading}>
+          {uploading ? (
+            <ActivityIndicator color={theme.colors.primary} />
+          ) : (
+            <Text style={styles.chooseText}>📷  Choose photo or video</Text>
+          )}
+        </Pressable>
+
+        <Text style={styles.label}>…or paste a media URL</Text>
         <TextInput
           style={styles.input}
           placeholder="https://…"
@@ -100,11 +132,14 @@ export function NewPostScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           value={imageUrl}
-          onChangeText={setImageUrl}
+          onChangeText={(t) => {
+            setImageUrl(t);
+            setMediaType('image');
+          }}
         />
         <Text style={styles.note}>
-          Paste a public image link. (A device photo picker and upload hook can
-          drop in here — see docs/SOCIAL.md.)
+          Pick from your library to upload a photo or a short video, or paste a
+          public link.
         </Text>
 
         <Text style={styles.label}>Caption</Text>
@@ -161,6 +196,15 @@ const styles = StyleSheet.create({
   },
   previewImg: { width: '100%', height: '100%' },
   previewHint: { color: theme.colors.textMuted },
+  chooseBtn: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    alignItems: 'center',
+    paddingVertical: theme.spacing(1.5),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.primary,
+  },
+  chooseText: { color: theme.colors.primary, fontWeight: '700', fontSize: 15 },
   label: {
     color: theme.colors.text,
     fontWeight: '700',

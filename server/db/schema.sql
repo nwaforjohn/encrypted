@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS idx_posts_author  ON posts (author_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_created ON posts (created_at DESC);
+-- 'image' | 'video'. image_url holds the media URL for both.
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
 
 -- Follow graph.
 CREATE TABLE IF NOT EXISTS follows (
@@ -142,6 +144,27 @@ CREATE TABLE IF NOT EXISTS ad_impressions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ad_impressions_created ON ad_impressions (created_at DESC);
+
+-- 24-hour stories.
+CREATE TABLE IF NOT EXISTS stories (
+  id         BIGSERIAL PRIMARY KEY,
+  author_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  image_url  TEXT NOT NULL,
+  media_type TEXT NOT NULL DEFAULT 'image',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + interval '24 hours')
+);
+CREATE INDEX IF NOT EXISTS idx_stories_author  ON stories (author_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stories_expires ON stories (expires_at);
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS media_type TEXT NOT NULL DEFAULT 'image';
+
+-- Who has seen which story (drives the seen/unseen ring).
+CREATE TABLE IF NOT EXISTS story_views (
+  story_id   BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (story_id, user_id)
+);
 
 -- Unified owner-revenue ledger spanning every stream. source is one of
 -- 'promotion' | 'subscription' | 'tip_cut' | 'ad'.

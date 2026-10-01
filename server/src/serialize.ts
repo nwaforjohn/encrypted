@@ -31,9 +31,12 @@ export function mapAuthor(row: AuthorJoin): WireAuthor {
   };
 }
 
+export type MediaType = 'image' | 'video';
+
 export interface WirePost {
   id: string;
   imageUrl: string;
+  mediaType: MediaType;
   caption: string;
   createdAt: string;
   isSponsored: boolean;
@@ -51,6 +54,7 @@ export const AUTHOR_COLUMNS = `
 export interface PostJoin extends AuthorJoin {
   id: string;
   image_url: string;
+  media_type: string;
   caption: string;
   is_sponsored: boolean;
   created_at: string;
@@ -64,6 +68,7 @@ export function mapPost(row: PostJoin): WirePost {
   return {
     id: row.id,
     imageUrl: row.image_url,
+    mediaType: row.media_type === 'video' ? 'video' : 'image',
     caption: row.caption,
     createdAt: row.created_at,
     isSponsored: row.is_sponsored,

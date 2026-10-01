@@ -13,7 +13,7 @@ const IOS_ADMOB_APP_ID =
   process.env.IOS_ADMOB_APP_ID ?? 'ca-app-pub-3940256099942544~1458002511';
 
 const config: ExpoConfig = {
-  name: 'Encrypted',
+  name: 'MoonChat',
   slug: 'encrypted',
   version: '1.0.0',
   orientation: 'portrait',
@@ -58,6 +58,13 @@ const config: ExpoConfig = {
       'expo-notifications',
       {
         color: '#00A884',
+      },
+    ],
+    [
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Allow $(PRODUCT_NAME) to access your photos so you can post and set a profile picture.',
       },
     ],
   ],

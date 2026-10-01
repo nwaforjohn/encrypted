@@ -5,18 +5,24 @@ messenger, with **four revenue streams for the app owner**. This document
 covers the data model, the API, the screens, and how each revenue stream
 flows end-to-end.
 
-## Features (Core MVP)
+## Features
 
-- **Photo posts** with captions (`POST /posts`).
+- **Photo & video posts** with captions (`POST /posts`; `mediaType` is
+  `image` or `video`).
 - **Home feed** of people you follow + your own posts, with active
   sponsored/promoted posts boosted to the top (`GET /posts/feed`).
+- **Stories** (24h), photo or video, with a seen/unseen ring and a full-screen
+  auto-advancing viewer (`POST /stories`, `GET /stories`, `POST /stories/:id/view`).
+- **Explore**: a discovery grid of recent public posts, plus people search in
+  one tab (`GET /posts/explore`, `GET /profiles/search`).
 - **Likes** (`POST/DELETE /posts/:id/like`) with optimistic UI.
 - **Comments** (`GET/POST /posts/:id/comments`).
 - **Follow / unfollow**, followers & following lists
   (`/profiles/:username/follow`, `/followers`, `/following`).
 - **Profiles**: avatar, display name, bio, post grid, counts, verified badge,
   creator balance. Edit your own (`PUT /profiles/me`).
-- **Discover**: search people by username / name (`GET /profiles/search`).
+- **Device uploads**: pick a photo or short video from the library and upload
+  it (`POST /uploads`, multipart).
 
 ## Revenue streams
 
@@ -65,13 +71,39 @@ receipt to the backend:
 > end-to-end, and logs a warning. Set the store credentials before taking real
 > payments — see [`MONETIZATION.md`](MONETIZATION.md).
 
-## Images
+## Media (photos & videos)
 
-Posts and avatars reference an **image URL** (`image_url`, `avatar_url`). For
-the MVP you paste a public link. To add device photo upload, drop an uploader
-(e.g. `expo-image-picker` + an S3/Cloudinary/R2 signed-upload endpoint) into
-`NewPostScreen` / `EditProfileScreen` and store the returned URL — the rest of
-the pipeline is unchanged.
+Posts, stories and avatars reference a media **URL** (`image_url`) plus a
+`media_type` of `image` or `video`. You can either paste a public link or pick
+from the device library and upload.
+
+**Upload pipeline** (`POST /uploads`, `server/src/routes/uploads.ts`):
+- The client picks with `expo-image-picker` and uploads via
+  `multipart/form-data` (field `file`) — see `src/media/upload.ts`. Videos
+  stream up without base64 bloat.
+- The server (multer) writes the file to `UPLOADS_DIR` (default
+  `<server>/uploads`), serves it statically at `/uploads/<name>`, and returns
+  `{ url, mediaType }`. Limits: 100 MB, images + `mp4`/`mov`/`webm` video.
+- Videos play via `expo-av` (`src/components/MediaView.tsx`) in the feed, post
+  detail and story viewer.
+
+> **Production storage**: local disk is fine for development but is ephemeral
+> on hosts like Render (uploads vanish on redeploy). For production, swap the
+> `multer` disk write for a stream to **S3 / Cloudinary / R2** and return that
+> URL — nothing else in the pipeline changes. Set `PUBLIC_URL` when the server
+> is behind a proxy/CDN so absolute URLs are correct.
+
+## Stories
+
+- `POST /stories` creates a 24h story (image or video); expiry is the schema
+  default (`now() + 24h`).
+- `GET /stories` returns active stories from you + people you follow, grouped
+  by author and ordered (yours first, then unseen, then most recent). Each
+  group carries `hasUnseen` to drive the ring color.
+- `POST /stories/:id/view` marks a story seen.
+- Client: `useStoriesStore`, the `StoryTray` rail atop the feed, and the
+  full-screen `StoryViewer` (tap right/left to advance, auto-advance on a
+  timer, silent-start video).
 
 ## Pricing
 
@@ -87,8 +119,10 @@ Connect, keyed by SKU.
 ## Key files
 
 **Server** (`server/src/`)
-- `routes/posts.ts` — posts, feed, likes, comments
+- `routes/posts.ts` — posts, feed, explore, likes, comments
+- `routes/stories.ts` — 24h stories
 - `routes/profiles.ts` — profiles, follow graph, search
+- `routes/uploads.ts` — multipart image/video upload (multer)
 - `routes/tips.ts` — creator tips (stream 4)
 - `routes/promotions.ts` — user-paid promotions (stream 1)
 - `routes/admin.ts` — revenue dashboard + sponsored posts (streams 1 & reporting)
@@ -101,9 +135,12 @@ Connect, keyed by SKU.
 
 **Client** (`src/`)
 - `api/social.ts` — typed API wrappers
+- `media/upload.ts` — pick (expo-image-picker) + multipart upload
 - `store/useFeedStore.ts` — feed state + optimistic likes
-- `screens/` — `FeedScreen`, `DiscoverScreen`, `NewPostScreen`,
-  `PostDetailScreen`, `ProfileScreen`, `EditProfileScreen`, `UserListScreen`,
-  `AdminRevenueScreen`
-- `components/` — `PostCard`, `Avatar`, `FeedAd`, `PurchaseSheet`
+- `store/useStoriesStore.ts` — stories rail + seen tracking
+- `screens/` — `FeedScreen`, `ExploreScreen`, `NewPostScreen`,
+  `PostDetailScreen`, `StoryViewerScreen`, `ProfileScreen`, `EditProfileScreen`,
+  `UserListScreen`, `AdminRevenueScreen`
+- `components/` — `PostCard`, `MediaView` (image/video), `Avatar`, `FeedAd`,
+  `StoryTray`, `PurchaseSheet`
 - `monetization/iap.ts` — tips & promotions (consumables)

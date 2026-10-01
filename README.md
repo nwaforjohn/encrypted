@@ -1,19 +1,21 @@
-# Encrypted 🔒
+# MoonChat 🌙
 
-A **social media app (Instagram-style photo sharing)** *and* an end-to-end
-encrypted messenger, built with **React Native + Expo** and a
+A **social media app (Instagram-style photo & video sharing)** *and* an
+end-to-end encrypted messenger, built with **React Native + Expo** and a
 **Node/PostgreSQL backend**, with a complete **monetization layer** so the app
 owner earns money while people use the app — ready for the **Google Play
 Store** and **Apple App Store**.
 
 This is a full stack: a mobile app (`/`) and a server (`/server`) that real
-users register against, post photos, follow each other, and exchange encrypted
-messages through.
+users register against, post photos and videos, share stories, follow each
+other, and exchange encrypted messages through.
 
-**Social network (Instagram-style)** — photo posts, a follow-based feed, likes,
-comments, profiles, Discover/search, and a verified badge, with **four owner
-revenue streams** (sponsored/promoted posts, feed ads, Pro subscriptions, and
-creator tips with a platform cut) surfaced in an in-app **Revenue dashboard**.
+**Social network (Instagram-style)** — photo & video posts, 24-hour stories,
+a follow-based feed, an Explore tab, likes, comments, profiles, people search,
+and a verified badge, with **four owner revenue streams**
+(sponsored/promoted posts, feed ads, Pro subscriptions, and creator tips with a
+platform cut) surfaced in an in-app **Revenue dashboard**. Media can be picked
+from the device and uploaded (photos and short videos).
 
 👉 **Social layer & revenue, end-to-end:** [`docs/SOCIAL.md`](docs/SOCIAL.md)
 

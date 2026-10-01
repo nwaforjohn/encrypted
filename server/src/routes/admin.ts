@@ -96,6 +96,7 @@ adminRouter.get('/revenue', async (_req, res) => {
 const sponsoredSchema = z.object({
   imageUrl: z.string().url().max(2048),
   caption: z.string().max(2200).optional(),
+  mediaType: z.enum(['image', 'video']).optional(),
   hours: z.number().int().positive().max(24 * 365).optional(),
   // Optional revenue booked for a placement sold off-platform.
   amountCents: z.number().int().positive().max(100_000_000).optional(),
@@ -112,16 +113,16 @@ adminRouter.post('/sponsored', async (req, res) => {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid' });
     return;
   }
-  const { imageUrl, caption, hours, amountCents } = parsed.data;
+  const { imageUrl, caption, mediaType, hours, amountCents } = parsed.data;
 
   const post = (
     await pool.query<PostRow>(
-      `INSERT INTO posts (author_id, image_url, caption, is_sponsored, promoted_until)
-       VALUES ($1, $2, $3, true,
-               CASE WHEN $4::int IS NULL THEN NULL
-                    ELSE now() + ($4::text || ' hours')::interval END)
+      `INSERT INTO posts (author_id, image_url, media_type, caption, is_sponsored, promoted_until)
+       VALUES ($1, $2, $3, $4, true,
+               CASE WHEN $5::int IS NULL THEN NULL
+                    ELSE now() + ($5::text || ' hours')::interval END)
        RETURNING *`,
-      [req.userId, imageUrl, caption ?? '', hours ?? null]
+      [req.userId, imageUrl, mediaType ?? 'image', caption ?? '', hours ?? null]
     )
   ).rows[0];
 

@@ -15,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '@/theme';
 import { Avatar } from '@/components/Avatar';
 import { social } from '@/api/social';
+import { pickAndUpload } from '@/media/upload';
 import type { RootStackParamList } from '@/navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -23,6 +24,7 @@ export function EditProfileScreen() {
   const navigation = useNavigation<Nav>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
@@ -43,6 +45,18 @@ export function EditProfileScreen() {
       }
     })();
   }, []);
+
+  const chooseAvatar = async () => {
+    try {
+      setUploading(true);
+      const result = await pickAndUpload('image', { square: true });
+      if (result) setAvatarUrl(result.url);
+    } catch (err) {
+      Alert.alert('Upload failed', String((err as Error)?.message ?? err));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const save = async () => {
     try {
@@ -72,6 +86,13 @@ export function EditProfileScreen() {
     <ScrollView style={styles.container} contentContainerStyle={{ padding: theme.spacing(2) }}>
       <View style={styles.avatarWrap}>
         <Avatar username={username} avatarUrl={avatarUrl || null} size={88} />
+        <Pressable style={styles.changePhoto} onPress={chooseAvatar} disabled={uploading}>
+          {uploading ? (
+            <ActivityIndicator color={theme.colors.primary} />
+          ) : (
+            <Text style={styles.changePhotoText}>Change photo</Text>
+          )}
+        </Pressable>
       </View>
 
       <Text style={styles.label}>Avatar URL</Text>
@@ -126,6 +147,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarWrap: { alignItems: 'center', marginBottom: theme.spacing(2) },
+  changePhoto: { marginTop: theme.spacing(1) },
+  changePhotoText: { color: theme.colors.primary, fontWeight: '700' },
   label: {
     color: theme.colors.text,
     fontWeight: '700',

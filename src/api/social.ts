@@ -13,9 +13,12 @@ export interface Author {
   isVerified: boolean;
 }
 
+export type MediaType = 'image' | 'video';
+
 export interface Post {
   id: string;
   imageUrl: string;
+  mediaType: MediaType;
   caption: string;
   createdAt: string;
   isSponsored: boolean;
@@ -61,6 +64,20 @@ export interface UserCard extends Author {
   isFollowing: boolean;
 }
 
+export interface Story {
+  id: string;
+  imageUrl: string;
+  mediaType: MediaType;
+  createdAt: string;
+  seenByMe: boolean;
+}
+
+export interface StoryGroup {
+  author: Author;
+  stories: Story[];
+  hasUnseen: boolean;
+}
+
 export interface RevenueSummary {
   currency: string;
   totals: {
@@ -94,6 +111,9 @@ export const social = {
   feed: (offset = 0, limit = 20) =>
     api.get<{ posts: Post[] }>(`/posts/feed?offset=${offset}&limit=${limit}`),
 
+  explore: (offset = 0, limit = 30) =>
+    api.get<{ posts: Post[] }>(`/posts/explore?offset=${offset}&limit=${limit}`),
+
   userPosts: (username: string, offset = 0, limit = 30) =>
     api.get<{ posts: Post[] }>(
       `/posts/user/${encodeURIComponent(username)}?offset=${offset}&limit=${limit}`
@@ -101,8 +121,8 @@ export const social = {
 
   getPost: (id: string) => api.get<{ post: Post }>(`/posts/${id}`),
 
-  createPost: (imageUrl: string, caption: string) =>
-    api.post<{ post: Post }>('/posts', { imageUrl, caption }),
+  createPost: (imageUrl: string, caption: string, mediaType: MediaType = 'image') =>
+    api.post<{ post: Post }>('/posts', { imageUrl, caption, mediaType }),
 
   deletePost: (id: string) => api.delete<{ ok: boolean }>(`/posts/${id}`),
 
@@ -154,6 +174,16 @@ export const social = {
       `/profiles/${encodeURIComponent(username)}/following`
     ),
 
+  // --- Stories -------------------------------------------------------------
+
+  stories: () => api.get<{ groups: StoryGroup[] }>('/stories'),
+
+  createStory: (imageUrl: string, mediaType: MediaType = 'image') =>
+    api.post<{ id: string }>('/stories', { imageUrl, mediaType }),
+
+  viewStory: (id: string) =>
+    api.post<{ ok: boolean }>(`/stories/${id}/view`).catch(() => undefined),
+
   // --- Ads / admin ---------------------------------------------------------
 
   logImpression: (placement: string) =>
@@ -164,6 +194,7 @@ export const social = {
   createSponsored: (data: {
     imageUrl: string;
     caption?: string;
+    mediaType?: MediaType;
     hours?: number;
     amountCents?: number;
   }) => api.post<{ ok: boolean; postId: string }>('/admin/sponsored', data),

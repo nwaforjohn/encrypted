@@ -41,6 +41,12 @@ export const env = {
   // Estimated effective CPM (revenue per 1000 ad impressions) in cents, used
   // only for the in-app ad-revenue estimate. Real payout comes from AdMob.
   adEcpmCents: Number(process.env.AD_ECPM_CENTS ?? 300),
+
+  // Where uploaded images are written (defaults to <server>/uploads).
+  uploadsDir: process.env.UPLOADS_DIR ?? '',
+  // Public base URL of this server, used to build absolute upload URLs. When
+  // empty it's derived from the request host. Set it behind a proxy/CDN.
+  publicUrl: process.env.PUBLIC_URL ?? '',
 };
 
 /** True when real purchase verification is configured. */

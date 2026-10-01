@@ -8,6 +8,7 @@ export type RootStackParamList = {
   UserProfile: { username: string };
   EditProfile: undefined;
   UserList: { username: string; mode: 'followers' | 'following' };
+  StoryViewer: { startIndex: number };
   // Monetization.
   Store: undefined;
   AdminRevenue: undefined;
@@ -16,7 +17,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Feed: undefined;
-  Discover: undefined;
+  Explore: undefined;
   NewPost: undefined;
   Chats: undefined;
   Profile: undefined;

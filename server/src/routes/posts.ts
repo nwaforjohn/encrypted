@@ -27,7 +27,8 @@ const BOOST_EXPR = `(
  *  current user (used for likedByMe). */
 function postSelect(viewer: string): string {
   return `
-    SELECT p.id, p.author_id, p.image_url, p.caption, p.is_sponsored, p.created_at,
+    SELECT p.id, p.author_id, p.image_url, p.media_type, p.caption,
+           p.is_sponsored, p.created_at,
            ${AUTHOR_COLUMNS},
            (SELECT count(*) FROM likes l WHERE l.post_id = p.id)       AS like_count,
            (SELECT count(*) FROM comments c WHERE c.post_id = p.id)    AS comment_count,
@@ -48,20 +49,21 @@ async function fetchPost(id: string, viewerId: string): Promise<PostJoin | null>
 const createSchema = z.object({
   imageUrl: z.string().url().max(2048),
   caption: z.string().max(2200).optional(),
+  mediaType: z.enum(['image', 'video']).optional(),
 });
 
-/** Create a photo post. */
+/** Create a photo or video post. */
 postsRouter.post('/', requireAuth, async (req, res) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid' });
     return;
   }
-  const { imageUrl, caption } = parsed.data;
+  const { imageUrl, caption, mediaType } = parsed.data;
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO posts (author_id, image_url, caption)
-     VALUES ($1, $2, $3) RETURNING id`,
-    [req.userId, imageUrl, caption ?? '']
+    `INSERT INTO posts (author_id, image_url, media_type, caption)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [req.userId, imageUrl, mediaType ?? 'image', caption ?? '']
   );
   const post = await fetchPost(rows[0].id, req.userId!);
   res.json({ post: post ? mapPost(post) : null });
@@ -81,6 +83,23 @@ postsRouter.get('/feed', requireAuth, async (req, res) => {
          OR p.author_id IN (SELECT followee_id FROM follows WHERE follower_id = $1)
          OR ${BOOST_EXPR}
       ORDER BY ${BOOST_EXPR} DESC, p.created_at DESC
+      LIMIT $2 OFFSET $3`,
+    [req.userId, limit, offset]
+  );
+  res.json({ posts: rows.map(mapPost) });
+});
+
+/**
+ * Explore: recent public posts from across the app (not limited to people you
+ * follow), excluding sponsored posts and your own. For discovery grids.
+ */
+postsRouter.get('/explore', requireAuth, async (req, res) => {
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 30)));
+  const offset = Math.max(0, Number(req.query.offset ?? 0));
+  const { rows } = await pool.query<PostJoin>(
+    `${postSelect('$1')}
+      WHERE NOT p.is_sponsored AND p.author_id <> $1
+      ORDER BY p.created_at DESC
       LIMIT $2 OFFSET $3`,
     [req.userId, limit, offset]
   );

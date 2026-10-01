@@ -6,9 +6,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { theme } from '@/theme';
 import { AuthScreen } from '@/screens/AuthScreen';
 import { FeedScreen } from '@/screens/FeedScreen';
-import { DiscoverScreen } from '@/screens/DiscoverScreen';
+import { ExploreScreen } from '@/screens/ExploreScreen';
 import { NewPostScreen } from '@/screens/NewPostScreen';
 import { PostDetailScreen } from '@/screens/PostDetailScreen';
+import { StoryViewerScreen } from '@/screens/StoryViewerScreen';
 import { ProfileScreen } from '@/screens/ProfileScreen';
 import { EditProfileScreen } from '@/screens/EditProfileScreen';
 import { UserListScreen } from '@/screens/UserListScreen';
@@ -56,11 +57,11 @@ function Tabs() {
       <Tab.Screen
         name="Feed"
         component={FeedScreen}
-        options={{ title: 'Protogram', tabBarIcon: tabIcon('🏠') }}
+        options={{ title: 'MoonChat', tabBarIcon: tabIcon('🏠') }}
       />
       <Tab.Screen
-        name="Discover"
-        component={DiscoverScreen}
+        name="Explore"
+        component={ExploreScreen}
         options={{ tabBarIcon: tabIcon('🔍') }}
       />
       <Tab.Screen
@@ -104,6 +105,11 @@ export function RootNavigator() {
               name="PostDetail"
               component={PostDetailScreen}
               options={{ title: 'Post' }}
+            />
+            <Stack.Screen
+              name="StoryViewer"
+              component={StoryViewerScreen}
+              options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }}
             />
             <Stack.Screen
               name="UserProfile"

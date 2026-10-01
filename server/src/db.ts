@@ -30,6 +30,7 @@ export interface PostRow {
   id: string;
   author_id: string;
   image_url: string;
+  media_type: string;
   caption: string;
   is_sponsored: boolean;
   promoted_until: string | null;

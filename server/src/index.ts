@@ -12,12 +12,21 @@ import { tipsRouter } from './routes/tips';
 import { promotionsRouter } from './routes/promotions';
 import { adsRouter } from './routes/ads';
 import { adminRouter } from './routes/admin';
+import { storiesRouter } from './routes/stories';
+import { uploadsRouter, uploadsDir } from './routes/uploads';
 import { attachWebSocket } from './realtime/ws';
 
 async function main(): Promise<void> {
   await migrate();
 
   const app = express();
+
+  // Uploaded images: served statically, and the upload POST handler (which
+  // uses its own larger body limit) is mounted BEFORE the global 1 MB JSON
+  // parser so photo uploads aren't rejected by it.
+  app.use('/uploads', express.static(uploadsDir));
+  app.use('/uploads', uploadsRouter);
+
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
@@ -28,6 +37,7 @@ async function main(): Promise<void> {
   // Social layer + owner revenue.
   app.use('/posts', postsRouter);
   app.use('/profiles', profilesRouter);
+  app.use('/stories', storiesRouter);
   app.use('/tips', tipsRouter);
   app.use('/promotions', promotionsRouter);
   app.use('/ads', adsRouter);

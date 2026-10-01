@@ -13,8 +13,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '@/theme';
 import { useFeedStore } from '@/store/useFeedStore';
+import { useStoriesStore } from '@/store/useStoriesStore';
 import { PostCard } from '@/components/PostCard';
 import { FeedAd } from '@/components/FeedAd';
+import { StoryTray } from '@/components/StoryTray';
 import { PurchaseSheet } from '@/components/PurchaseSheet';
 import { TIPS } from '@/monetization/products';
 import { tipCreator } from '@/monetization/iap';
@@ -39,12 +41,15 @@ export function FeedScreen() {
     toggleLike,
   } = useFeedStore();
 
+  const loadStories = useStoriesStore((s) => s.load);
+
   const [tipTarget, setTipTarget] = useState<Post | null>(null);
   const [busySku, setBusySku] = useState<string | null>(null);
 
   useEffect(() => {
     void loadFeed();
-  }, [loadFeed]);
+    void loadStories();
+  }, [loadFeed, loadStories]);
 
   const handleTip = async (sku: string) => {
     if (!tipTarget) return;
@@ -73,6 +78,7 @@ export function FeedScreen() {
       <FlatList
         data={posts}
         keyExtractor={(p) => p.id}
+        ListHeaderComponent={<StoryTray />}
         renderItem={({ item, index }) => (
           <>
             <PostCard
@@ -92,7 +98,10 @@ export function FeedScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => loadFeed(true)}
+            onRefresh={() => {
+              void loadFeed(true);
+              void loadStories();
+            }}
             tintColor={theme.colors.primary}
           />
         }

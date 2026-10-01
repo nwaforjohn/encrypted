@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { theme } from '@/theme';
 import { Avatar } from './Avatar';
+import { MediaView } from './MediaView';
 import type { Post } from '@/api/social';
 
 function timeAgo(iso: string): string {
@@ -63,10 +63,12 @@ export function PostCard({
         </Pressable>
       </View>
 
-      <Image
-        source={{ uri: post.imageUrl }}
+      <MediaView
+        uri={post.imageUrl}
+        mediaType={post.mediaType}
         style={{ width, height: width, backgroundColor: theme.colors.surfaceAlt }}
         resizeMode="cover"
+        useControls
       />
 
       <View style={styles.actions}>
