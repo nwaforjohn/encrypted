@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { pool, type UserRow } from '../db';
 import { signToken } from '../auth/jwt';
+import { env } from '../env';
 
 export const authRouter = Router();
 
@@ -18,7 +19,13 @@ const credsSchema = z.object({
 });
 
 function publicUser(row: UserRow) {
-  return { id: row.id, username: row.username, publicKey: row.public_key };
+  return {
+    id: row.id,
+    username: row.username,
+    publicKey: row.public_key,
+    isAdmin: row.is_admin,
+    isVerified: row.is_verified,
+  };
 }
 
 authRouter.post('/register', async (req, res) => {
@@ -29,12 +36,13 @@ authRouter.post('/register', async (req, res) => {
   }
   const { username, password, publicKey } = parsed.data;
   const passwordHash = await bcrypt.hash(password, 10);
+  const isAdmin = env.adminUsernames.includes(username.toLowerCase());
 
   try {
     const { rows } = await pool.query<UserRow>(
-      `INSERT INTO users (username, password_hash, public_key)
-       VALUES ($1, $2, $3) RETURNING *`,
-      [username.toLowerCase(), passwordHash, publicKey]
+      `INSERT INTO users (username, password_hash, public_key, display_name, is_admin)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [username.toLowerCase(), passwordHash, publicKey, username, isAdmin]
     );
     const user = rows[0];
     res.json({ token: signToken(user.id), user: publicUser(user) });
@@ -76,6 +84,12 @@ authRouter.post('/login', async (req, res) => {
       user.id,
     ]);
     user.public_key = publicKey;
+  }
+
+  // Self-heal admin access from the allowlist for an existing account.
+  if (!user.is_admin && env.adminUsernames.includes(user.username)) {
+    await pool.query(`UPDATE users SET is_admin = true WHERE id = $1`, [user.id]);
+    user.is_admin = true;
   }
 
   res.json({ token: signToken(user.id), user: publicUser(user) });

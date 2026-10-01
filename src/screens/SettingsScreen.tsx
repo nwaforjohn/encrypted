@@ -8,6 +8,7 @@ import type { Feature } from '@/monetization/products';
 
 const FEATURE_LABELS: Record<Feature, string> = {
   no_ads: 'Ad-free',
+  verified: 'Verified badge',
   large_uploads: 'Large uploads (2 GB)',
   premium_themes: 'Premium themes',
   broadcast_channels: 'Broadcast channels',

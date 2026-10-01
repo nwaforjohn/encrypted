@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { pool, type EntitlementRow } from '../db';
 import { requireAuth } from '../auth/middleware';
 import { verifyPurchase } from '../purchases';
+import { priceCents, recordEarning } from '../revenue';
 
 export const purchasesRouter = Router();
 
@@ -46,15 +47,29 @@ purchasesRouter.post('/verify', requireAuth, async (req, res) => {
     return;
   }
 
-  await pool.query(
+  const { rowCount } = await pool.query(
     `INSERT INTO entitlements (user_id, sku, platform, purchase_token, expires_at, active)
      VALUES ($1, $2, $3, $4, $5, true)
      ON CONFLICT (user_id, sku)
      DO UPDATE SET purchase_token = EXCLUDED.purchase_token,
                    expires_at = EXCLUDED.expires_at,
-                   active = true`,
+                   active = true
+     -- only count a *new* purchase_token toward revenue (not a re-sync)
+     WHERE entitlements.purchase_token IS DISTINCT FROM EXCLUDED.purchase_token`,
     [userId, sku, platform, token, result.expiresAt]
   );
+
+  // A Pro subscription grants the verified badge and is owner revenue.
+  if (sku.startsWith('pro_')) {
+    await pool.query(`UPDATE users SET is_verified = true WHERE id = $1`, [userId]);
+    if ((rowCount ?? 0) > 0) {
+      await recordEarning('subscription', priceCents(sku), {
+        userId,
+        ref: sku,
+        note: `${platform} subscription`,
+      });
+    }
+  }
 
   res.json({ ok: true, entitlements: await listEntitlements(userId) });
 });

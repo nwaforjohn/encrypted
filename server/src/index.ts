@@ -6,6 +6,12 @@ import { authRouter } from './routes/auth';
 import { usersRouter } from './routes/users';
 import { messagesRouter } from './routes/messages';
 import { purchasesRouter } from './routes/purchases';
+import { postsRouter } from './routes/posts';
+import { profilesRouter } from './routes/profiles';
+import { tipsRouter } from './routes/tips';
+import { promotionsRouter } from './routes/promotions';
+import { adsRouter } from './routes/ads';
+import { adminRouter } from './routes/admin';
 import { attachWebSocket } from './realtime/ws';
 
 async function main(): Promise<void> {
@@ -19,6 +25,13 @@ async function main(): Promise<void> {
   app.use('/users', usersRouter);
   app.use('/messages', messagesRouter);
   app.use('/purchases', purchasesRouter);
+  // Social layer + owner revenue.
+  app.use('/posts', postsRouter);
+  app.use('/profiles', profilesRouter);
+  app.use('/tips', tipsRouter);
+  app.use('/promotions', promotionsRouter);
+  app.use('/ads', adsRouter);
+  app.use('/admin', adminRouter);
 
   // Centralized error handler so a thrown error never crashes the process.
   app.use(

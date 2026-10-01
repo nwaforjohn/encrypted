@@ -5,6 +5,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { theme } from '@/theme';
 import { AuthScreen } from '@/screens/AuthScreen';
+import { FeedScreen } from '@/screens/FeedScreen';
+import { DiscoverScreen } from '@/screens/DiscoverScreen';
+import { NewPostScreen } from '@/screens/NewPostScreen';
+import { PostDetailScreen } from '@/screens/PostDetailScreen';
+import { ProfileScreen } from '@/screens/ProfileScreen';
+import { EditProfileScreen } from '@/screens/EditProfileScreen';
+import { UserListScreen } from '@/screens/UserListScreen';
+import { AdminRevenueScreen } from '@/screens/AdminRevenueScreen';
 import { ChatListScreen } from '@/screens/ChatListScreen';
 import { ChatRoomScreen } from '@/screens/ChatRoomScreen';
 import { NewChatScreen } from '@/screens/NewChatScreen';
@@ -40,24 +48,35 @@ function Tabs() {
       screenOptions={{
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textMuted,
+        tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
         headerStyle: { backgroundColor: theme.colors.primaryDark },
         headerTintColor: '#fff',
       }}
     >
+      <Tab.Screen
+        name="Feed"
+        component={FeedScreen}
+        options={{ title: 'Protogram', tabBarIcon: tabIcon('🏠') }}
+      />
+      <Tab.Screen
+        name="Discover"
+        component={DiscoverScreen}
+        options={{ tabBarIcon: tabIcon('🔍') }}
+      />
+      <Tab.Screen
+        name="NewPost"
+        component={NewPostScreen}
+        options={{ title: 'New post', tabBarIcon: tabIcon('➕') }}
+      />
       <Tab.Screen
         name="Chats"
         component={ChatListScreen}
         options={{ tabBarIcon: tabIcon('💬') }}
       />
       <Tab.Screen
-        name="Store"
-        component={StoreScreen}
-        options={{ title: 'Go Pro', tabBarIcon: tabIcon('⭐') }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{ tabBarIcon: tabIcon('⚙️') }}
+        name="Profile"
+        component={ProfileScreen}
+        options={{ tabBarIcon: tabIcon('👤') }}
       />
     </Tab.Navigator>
   );
@@ -81,6 +100,37 @@ export function RootNavigator() {
               component={Tabs}
               options={{ headerShown: false }}
             />
+            <Stack.Screen
+              name="PostDetail"
+              component={PostDetailScreen}
+              options={{ title: 'Post' }}
+            />
+            <Stack.Screen
+              name="UserProfile"
+              component={ProfileScreen}
+              options={{ title: 'Profile' }}
+            />
+            <Stack.Screen
+              name="EditProfile"
+              component={EditProfileScreen}
+              options={{ title: 'Edit profile' }}
+            />
+            <Stack.Screen
+              name="UserList"
+              component={UserListScreen}
+              options={{ title: '' }}
+            />
+            <Stack.Screen
+              name="AdminRevenue"
+              component={AdminRevenueScreen}
+              options={{ title: 'Revenue' }}
+            />
+            <Stack.Screen
+              name="Store"
+              component={StoreScreen}
+              options={{ title: 'Go Pro' }}
+            />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="ChatRoom" component={ChatRoomScreen} />
             <Stack.Screen
               name="NewChat"

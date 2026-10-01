@@ -17,9 +17,12 @@ import {
 } from 'react-native-iap';
 import { Platform } from 'react-native';
 import {
+  CONSUMABLE_SKUS,
   INAPP_SKUS,
   SUBSCRIPTION_SKUS,
+  TIP_SKUS,
   findProduct,
+  isConsumable,
 } from './products';
 import { useEntitlements } from './entitlements';
 import { api } from '@/api/client';
@@ -36,6 +39,22 @@ type Listener = { remove: () => void };
 let purchaseUpdateSub: Listener | null = null;
 let purchaseErrorSub: Listener | null = null;
 let connected = false;
+
+/**
+ * Consumable purchases (tips, promotions) need extra context the store receipt
+ * doesn't carry — who to tip, which post to promote. The UI records that intent
+ * here right before calling requestPurchase; the global purchase listener reads
+ * it when the matching purchase arrives. Keyed by SKU so concurrent intents for
+ * different tiers don't collide.
+ */
+type ConsumableIntent =
+  | { kind: 'tip'; toUserId: string; postId?: string }
+  | { kind: 'promotion'; postId: string };
+
+const pendingIntents = new Map<string, ConsumableIntent>();
+
+/** Platform value the backend expects. */
+const PLATFORM = Platform.OS === 'ios' ? 'ios' : 'android';
 
 export interface StoreCatalog {
   subscriptions: Subscription[];
@@ -59,12 +78,26 @@ export async function initIAP(): Promise<void> {
 
   purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
     const sku = purchase.productId;
+
+    if (isConsumable(sku)) {
+      // Tips & promotions: hand the receipt to the right backend endpoint,
+      // then consume so the user can buy again.
+      const ok = await processConsumable(purchase);
+      try {
+        await finishTransaction({ purchase, isConsumable: true });
+      } catch (err) {
+        console.warn('[iap] finishTransaction (consumable) failed', err);
+      }
+      if (!ok) console.warn('[iap] consumable not processed by server', sku);
+      return;
+    }
+
     const verified = await verifyPurchase(purchase);
     if (!verified) return;
 
     await useEntitlements.getState().grantPurchase(sku);
 
-    // Acknowledge/consume with the store so it finalizes. Our products are
+    // Acknowledge/consume with the store so it finalizes. These products are
     // non-consumable (owned forever) and subscriptions, so never consume.
     try {
       await finishTransaction({ purchase, isConsumable: false });
@@ -90,14 +123,79 @@ export async function teardownIAP(): Promise<void> {
   }
 }
 
-/** Load store metadata (localized prices, titles) for display. */
+/** Load store metadata (localized prices, titles) for display. Includes
+ *  consumables (tips + promotions) so their live prices show in the UI. */
 export async function loadCatalog(): Promise<StoreCatalog> {
   if (!connected) return { subscriptions: [], products: [] };
   const [subscriptions, products] = await Promise.all([
     getSubscriptions({ skus: SUBSCRIPTION_SKUS }).catch(() => []),
-    getProducts({ skus: INAPP_SKUS }).catch(() => []),
+    getProducts({ skus: [...INAPP_SKUS, ...CONSUMABLE_SKUS] }).catch(() => []),
   ]);
   return { subscriptions, products };
+}
+
+/**
+ * Forward a completed consumable purchase to the backend. The server verifies
+ * the receipt, records the tip/promotion and books the owner revenue. Returns
+ * whether the server accepted it. The pending intent is cleared either way.
+ */
+async function processConsumable(purchase: Purchase): Promise<boolean> {
+  const sku = purchase.productId;
+  const token = purchase.purchaseToken || purchase.transactionReceipt;
+  const intent = pendingIntents.get(sku);
+  pendingIntents.delete(sku);
+  if (!token || !intent) return false;
+
+  try {
+    if (intent.kind === 'tip') {
+      await api.post('/tips', {
+        toUserId: intent.toUserId,
+        postId: intent.postId,
+        sku,
+        platform: PLATFORM,
+        token,
+      });
+    } else {
+      await api.post('/promotions', {
+        postId: intent.postId,
+        sku,
+        platform: PLATFORM,
+        token,
+      });
+    }
+    return true;
+  } catch (err) {
+    console.warn('[iap] consumable server call failed', err);
+    return false;
+  }
+}
+
+/** Tip a creator. `sku` is one of TIP_SKUS. Resolves when the purchase has
+ *  been requested; the result is delivered via the purchase listener. */
+export async function tipCreator(
+  sku: string,
+  toUserId: string,
+  postId?: string
+): Promise<void> {
+  if (!TIP_SKUS.includes(sku)) throw new Error(`Unknown tip product: ${sku}`);
+  pendingIntents.set(sku, { kind: 'tip', toUserId, postId });
+  try {
+    await requestPurchase(Platform.OS === 'ios' ? { sku } : { skus: [sku] });
+  } catch (err) {
+    pendingIntents.delete(sku);
+    throw err;
+  }
+}
+
+/** Promote one of your posts. `sku` is one of PROMOTION_SKUS. */
+export async function promotePost(sku: string, postId: string): Promise<void> {
+  pendingIntents.set(sku, { kind: 'promotion', postId });
+  try {
+    await requestPurchase(Platform.OS === 'ios' ? { sku } : { skus: [sku] });
+  } catch (err) {
+    pendingIntents.delete(sku);
+    throw err;
+  }
 }
 
 /** Buy a one-time product or feature unlock. */

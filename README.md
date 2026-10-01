@@ -1,12 +1,21 @@
 # Encrypted 🔒
 
-An end-to-end encrypted messenger (WhatsApp / Telegram style) built with
-**React Native + Expo** and a **Node/PostgreSQL backend**, with a complete
-**monetization layer** so the app owner earns money while people use the app —
-ready for the **Google Play Store** and **Apple App Store**.
+A **social media app (Instagram-style photo sharing)** *and* an end-to-end
+encrypted messenger, built with **React Native + Expo** and a
+**Node/PostgreSQL backend**, with a complete **monetization layer** so the app
+owner earns money while people use the app — ready for the **Google Play
+Store** and **Apple App Store**.
 
 This is a full stack: a mobile app (`/`) and a server (`/server`) that real
-users register against and exchange encrypted messages through.
+users register against, post photos, follow each other, and exchange encrypted
+messages through.
+
+**Social network (Instagram-style)** — photo posts, a follow-based feed, likes,
+comments, profiles, Discover/search, and a verified badge, with **four owner
+revenue streams** (sponsored/promoted posts, feed ads, Pro subscriptions, and
+creator tips with a platform cut) surfaced in an in-app **Revenue dashboard**.
+
+👉 **Social layer & revenue, end-to-end:** [`docs/SOCIAL.md`](docs/SOCIAL.md)
 
 ## What's inside
 
@@ -25,16 +34,21 @@ users register against and exchange encrypted messages through.
   purchase verification** (Google Play + Apple). Dockerized. See
   [`server/README.md`](server/README.md).
 
-**Monetization (4 revenue streams for the admin)**
-1. **In-app ads** (Google AdMob): banner, interstitial, and rewarded ads —
-   `src/monetization/ads.ts`, `src/components/AdBanner.tsx`.
-2. **Subscriptions** (Pro monthly/yearly).
-3. **One-time purchases** (theme pack, remove ads forever).
-4. **Paid feature unlocks** (broadcast channels, large groups, large uploads).
+**Monetization — 4 owner revenue streams** (see [`docs/SOCIAL.md`](docs/SOCIAL.md))
+1. **Sponsored / promoted posts** — the owner places sponsored posts into every
+   feed, and users pay to promote their own posts. Booked to the revenue ledger.
+2. **Feed ads** (Google AdMob): banner/interstitial/rewarded ads, with ads
+   interleaved in the feed — `src/monetization/ads.ts`, `src/components/`.
+3. **Pro subscription** (monthly/yearly) — verified badge, no ads, more.
+4. **Creator tips** — users tip creators; the platform keeps a configurable cut
+   and credits the rest to the creator's payout balance.
 
-   2–4 share one billing layer via `react-native-iap` — `src/monetization/iap.ts`,
-   with a single product catalog in `src/monetization/products.ts` and a central
-   entitlements store in `src/monetization/entitlements.ts`.
+   All of it rolls up into an in-app **Revenue dashboard** for the owner. The
+   billing layer (`react-native-iap`) has a single product catalog in
+   `src/monetization/products.ts`, a central entitlements store in
+   `src/monetization/entitlements.ts`, and server-side revenue accounting in
+   `server/src/revenue.ts`. (The messenger's one-time purchases and à-la-carte
+   feature unlocks still ship too.)
 
 👉 **Bring the whole thing live (backend + app):** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 👉 **How you actually get paid:** [`docs/MONETIZATION.md`](docs/MONETIZATION.md)
