@@ -1,9 +1,0 @@
-node_modules/
-dist/
-.env
-*.log
-# Locally stored uploads (use object storage in production)
-uploads/
-# Store credentials — never commit
-google-service-account.json
-AuthKey_*.p8
