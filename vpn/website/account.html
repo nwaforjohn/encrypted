@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Account — AuroraVPN</title>
+  <meta name="aurora-api" content="http://localhost:8080" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div id="nav"></div>
+  <main class="wrap" style="max-width:760px">
+
+    <!-- LOGGED OUT: auth -->
+    <section id="auth-view" style="padding:60px 0;display:none">
+      <div class="panel">
+        <div style="display:flex;gap:10px;margin-bottom:22px">
+          <button id="tab-login" class="btn btn-primary" style="flex:1">Log in</button>
+          <button id="tab-register" class="btn btn-ghost" style="flex:1">Sign up</button>
+        </div>
+        <div id="auth-msg"></div>
+        <form id="auth-form">
+          <div class="field"><label>Email</label><input type="email" id="email" required autocomplete="email" /></div>
+          <div class="field"><label>Password</label><input type="password" id="password" required minlength="8" autocomplete="current-password" placeholder="At least 8 characters" /></div>
+          <button type="submit" class="btn btn-primary btn-block btn-lg" id="auth-submit">Log in</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- LOGGED IN: dashboard -->
+    <section id="dash-view" style="padding:40px 0;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
+        <h1 style="margin:0">My Account</h1>
+        <button id="logout" class="btn btn-ghost">Log out</button>
+      </div>
+      <div id="dash-msg"></div>
+
+      <div class="panel" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="color:var(--muted);font-size:13px">Signed in as</div>
+            <div id="acc-email" style="font-weight:700;font-size:18px"></div>
+          </div>
+          <div id="acc-plan"></div>
+        </div>
+      </div>
+
+      <div class="panel" id="sub-panel" style="margin-bottom:18px">
+        <h3 style="margin-top:0">Subscription</h3>
+        <div id="sub-body"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px">
+        <h3 style="margin-top:0">Your devices</h3>
+        <div id="devices-body"><p style="color:var(--muted)">No devices yet. Sign in from the AuroraVPN app to add one.</p></div>
+      </div>
+
+      <div class="disclaimer">
+        🔐 To connect, install the AuroraVPN app (<a href="download.html">download</a>) and sign in with
+        this account. Premium unlocks every location automatically.
+      </div>
+    </section>
+  </main>
+  <div id="footer"></div>
+
+  <script src="assets/api.js"></script>
+  <script src="assets/layout.js"></script>
+  <script>
+    Layout.mount('account');
+    const authView = document.getElementById('auth-view');
+    const dashView = document.getElementById('dash-view');
+    let mode = 'login';
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('tab-login').className = 'btn ' + (m === 'login' ? 'btn-primary' : 'btn-ghost');
+      document.getElementById('tab-register').className = 'btn ' + (m === 'register' ? 'btn-primary' : 'btn-ghost');
+      document.getElementById('auth-submit').textContent = m === 'login' ? 'Log in' : 'Create account';
+      document.getElementById('password').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+    }
+    document.getElementById('tab-login').onclick = () => setMode('login');
+    document.getElementById('tab-register').onclick = () => setMode('register');
+
+    document.getElementById('auth-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const msg = document.getElementById('auth-msg');
+      msg.innerHTML = '';
+      try {
+        if (mode === 'login') await Aurora.login(email, password);
+        else await Aurora.register(email, password);
+        const next = new URLSearchParams(location.search).get('next');
+        if (next === 'pricing') location.href = 'pricing.html';
+        else render();
+      } catch (err) {
+        const map = { bad_credentials: 'Wrong email or password.', email_taken: 'That email is already registered — try logging in.', weak_password: 'Password must be at least 8 characters.', invalid_email: 'Enter a valid email address.' };
+        msg.innerHTML = '<div class="notice err">' + (map[err.message] || ('Error: ' + err.message)) + '</div>';
+      }
+    };
+
+    document.getElementById('logout').onclick = () => { Aurora.logout(); render(); };
+
+    async function openPortal() {
+      try { const { url } = await Aurora.portal(); location.href = url; }
+      catch (e) { document.getElementById('dash-msg').innerHTML = '<div class="notice err">Billing portal unavailable: ' + e.message + '</div>'; }
+    }
+
+    async function render() {
+      if (!Aurora.isLoggedIn()) { authView.style.display = 'block'; dashView.style.display = 'none'; setMode('login'); return; }
+      authView.style.display = 'none'; dashView.style.display = 'block';
+      try {
+        const data = await Aurora.account();
+        document.getElementById('acc-email').textContent = data.user.email;
+        const premium = data.entitlement.premium;
+        document.getElementById('acc-plan').innerHTML =
+          '<span class="badge ' + (premium ? 'premium' : 'free') + '" style="font-size:14px;padding:6px 14px">' +
+          (premium ? '★ Premium' : 'Free plan') + '</span>';
+
+        const sub = document.getElementById('sub-body');
+        if (premium) {
+          const until = data.entitlement.currentPeriodEnd ? new Date(data.entitlement.currentPeriodEnd).toLocaleDateString() : '—';
+          sub.innerHTML = '<p>You\'re on <b>Premium</b> (' + data.entitlement.status + '). Renews/expires: <b>' + until + '</b>.</p>' +
+            '<button class="btn btn-ghost" id="portal-btn">Manage subscription</button>';
+          document.getElementById('portal-btn').onclick = openPortal;
+        } else {
+          sub.innerHTML = '<p style="color:var(--muted)">You\'re on the free plan. Upgrade to unlock all premium locations and the fastest speeds.</p>' +
+            '<a class="btn btn-primary" href="pricing.html">Upgrade to Premium</a>';
+        }
+
+        const dev = document.getElementById('devices-body');
+        if (data.devices && data.devices.length) {
+          dev.innerHTML = '<table><thead><tr><th>Device</th><th>Platform</th><th>Added</th><th>Last seen</th></tr></thead><tbody>' +
+            data.devices.map((d) => '<tr><td>' + d.name + '</td><td>' + d.platform + '</td><td>' +
+              new Date(d.created_at).toLocaleDateString() + '</td><td>' +
+              (d.last_seen_at ? new Date(d.last_seen_at).toLocaleDateString() : '—') + '</td></tr>').join('') +
+            '</tbody></table>';
+        }
+      } catch (e) {
+        if (e.status === 401) { Aurora.logout(); render(); return; }
+        document.getElementById('dash-msg').innerHTML = '<div class="notice err">Could not load account: ' + e.message + '</div>';
+      }
+    }
+
+    if (new URLSearchParams(location.search).get('checkout') === 'success') {
+      document.getElementById('dash-msg') && (document.getElementById('dash-msg').innerHTML = '');
+    }
+    render();
+  </script>
+</body>
+</html>

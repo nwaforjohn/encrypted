@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aurora
+      POSTGRES_PASSWORD: aurora
+      POSTGRES_DB: aurora
+    ports:
+      - "5432:5432"
+    volumes:
+      - aurora_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aurora"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://aurora:aurora@db:5432/aurora
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-you@example.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_MONTHLY: ${STRIPE_PRICE_MONTHLY:-}
+      STRIPE_PRICE_YEARLY: ${STRIPE_PRICE_YEARLY:-}
+      CHECKOUT_SUCCESS_URL: ${CHECKOUT_SUCCESS_URL:-http://localhost:5173/account.html?checkout=success}
+      CHECKOUT_CANCEL_URL: ${CHECKOUT_CANCEL_URL:-http://localhost:5173/pricing.html?checkout=cancel}
+      TUNNEL_DNS: ${TUNNEL_DNS:-1.1.1.1}
+      TUNNEL_MTU: ${TUNNEL_MTU:-1420}
+    ports:
+      - "8080:8080"
+
+volumes:
+  aurora_pg:

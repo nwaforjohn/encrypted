@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing — AuroraVPN</title>
+  <meta name="aurora-api" content="http://localhost:8080" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div id="nav"></div>
+  <main class="wrap">
+    <section class="hero" style="padding-bottom:20px;text-align:center">
+      <span class="eyebrow">Simple pricing</span>
+      <h1 style="font-size:44px;margin-top:16px">Choose your plan</h1>
+      <p class="lead" style="margin:0 auto">30-day money-back guarantee. Cancel anytime.</p>
+    </section>
+
+    <section style="padding-top:20px">
+      <div id="checkout-msg"></div>
+      <div class="plans">
+        <div class="plan">
+          <h3>Free</h3>
+          <div class="price">$0</div>
+          <div class="sub">Get started, no card needed</div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Device-wide WireGuard tunnel</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> 2 free locations</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Kill switch</li>
+            <li class="off"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg> Premium locations</li>
+            <li class="off"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg> Fastest speeds</li>
+          </ul>
+          <a href="account.html" class="btn btn-ghost btn-block">Create free account</a>
+        </div>
+
+        <div class="plan popular">
+          <span class="tag">MOST POPULAR</span>
+          <h3>Premium Yearly</h3>
+          <div class="price">$5.99<span>/mo</span></div>
+          <div class="sub">$71.88 billed yearly · save 50%</div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Everything in Free</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> All 60+ premium locations</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Fastest available speeds</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Threat & tracker blocking</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Up to 10 devices</li>
+          </ul>
+          <button class="btn btn-primary btn-block" data-plan="yearly">Get Premium Yearly</button>
+        </div>
+
+        <div class="plan">
+          <h3>Premium Monthly</h3>
+          <div class="price">$11.99<span>/mo</span></div>
+          <div class="sub">Billed monthly</div>
+          <ul>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Everything in Free</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> All 60+ premium locations</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Fastest available speeds</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Threat & tracker blocking</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Up to 10 devices</li>
+          </ul>
+          <button class="btn btn-ghost btn-block" data-plan="monthly">Get Premium Monthly</button>
+        </div>
+      </div>
+
+      <div class="disclaimer" style="margin-top:30px">
+        💡 On the mobile apps, subscriptions are sold through Apple App Store / Google Play
+        in-app purchase (store policy requirement). Web checkout here uses Stripe.
+      </div>
+    </section>
+  </main>
+  <div id="footer"></div>
+
+  <script src="assets/api.js"></script>
+  <script src="assets/layout.js"></script>
+  <script>
+    Layout.mount('pricing');
+    const msg = document.getElementById('checkout-msg');
+    const params = new URLSearchParams(location.search);
+    if (params.get('checkout') === 'cancel') {
+      msg.innerHTML = '<div class="notice err">Checkout canceled — no charge was made.</div>';
+    }
+    async function buy(plan) {
+      if (!Aurora.isLoggedIn()) { location.href = 'account.html?next=pricing'; return; }
+      try {
+        const { url } = await Aurora.checkout(plan);
+        location.href = url;
+      } catch (e) {
+        if (e.status === 503) msg.innerHTML = '<div class="notice err">Payments aren\'t configured yet. Add your Stripe keys to the backend .env (see vpn/docs/REVENUE.md).</div>';
+        else msg.innerHTML = '<div class="notice err">Could not start checkout: ' + e.message + '</div>';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+    document.querySelectorAll('[data-plan]').forEach((b) =>
+      b.addEventListener('click', () => buy(b.dataset.plan)));
+  </script>
+</body>
+</html>
