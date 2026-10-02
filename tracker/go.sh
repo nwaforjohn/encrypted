@@ -13,10 +13,9 @@ set -uo pipefail
 cd "$(dirname "$0")"
 PORT="${PORT:-4000}"
 BRANCH="claude/vibrant-carson-ww11ag"
-PLIST="$HOME/Library/LaunchAgents/com.familymoney.tracker.plist"
-
 echo "① Stopping any existing tracker (autostart + stray processes) ..."
-launchctl unload "$PLIST" 2>/dev/null || true   # stop the dueling autostart service
+launchctl unload "$HOME/Library/LaunchAgents/com.fundtrack.tracker.plist"   2>/dev/null || true
+launchctl unload "$HOME/Library/LaunchAgents/com.familymoney.tracker.plist" 2>/dev/null || true
 pkill -f cloudflared       2>/dev/null || true
 pkill -f "server.js"       2>/dev/null || true
 pkill -f "start.sh"        2>/dev/null || true

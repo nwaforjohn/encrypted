@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Family Money Tracker — zero-dependency Node server.
+ * FundTrack — zero-dependency Node server for a shared family money tracker.
  *
  * - Serves a single-page web UI from ./public
  * - JSON API with CRUD for members, categories and transactions
@@ -207,7 +207,18 @@ function serveStatic(res, urlPath) {
   const filePath = path.normalize(path.join(PUBLIC_DIR, rel));
   if (!filePath.startsWith(PUBLIC_DIR)) return send(res, 403, { error: 'forbidden' });
   fs.readFile(filePath, (err, buf) => {
-    if (err) return send(res, 404, { error: 'not found' });
+    if (err) {
+      // SPA fallback: routes without a file extension (e.g. /admin, /family)
+      // all render the single-page app, which reads the path to pick the mode.
+      if (!path.extname(filePath)) {
+        return fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (e2, html) => {
+          if (e2) return send(res, 404, { error: 'not found' });
+          res.writeHead(200, { 'Content-Type': MIME['.html'] });
+          res.end(html);
+        });
+      }
+      return send(res, 404, { error: 'not found' });
+    }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
     res.end(buf);
   });
@@ -674,7 +685,7 @@ function randomColor() {
 
 loadDb();
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  Family Money Tracker running at http://localhost:${PORT}`);
+  console.log(`\n  FundTrack running at http://localhost:${PORT}`);
   console.log(`  Admin password:  ${ADMIN_PASSWORD}`);
   console.log(`  Family password: ${FAMILY_PASSWORD}`);
   console.log(`  Data file: ${DB_FILE}\n`);

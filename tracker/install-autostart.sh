@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Install the Family Money Tracker as a macOS login item (launchd LaunchAgent).
+# Install FundTrack as a macOS login item (launchd LaunchAgent).
 # After this, the app + Cloudflare tunnel start automatically when you log in,
 # and restart themselves if they ever crash.
 #
@@ -18,13 +18,18 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-LABEL="com.familymoney.tracker"
+LABEL="com.fundtrack.tracker"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+OLD_PLIST="$HOME/Library/LaunchAgents/com.familymoney.tracker.plist"  # pre-rebrand
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "This installer is for macOS. On Linux, use a systemd user service or just run ./start.sh."
   exit 1
 fi
+
+# Always clear out the old-named service so the two never run at once.
+launchctl unload "$OLD_PLIST" 2>/dev/null || true
+rm -f "$OLD_PLIST"
 
 # --- uninstall -------------------------------------------------------------
 if [ "${1:-}" = "--uninstall" ]; then
@@ -37,6 +42,7 @@ fi
 ADMIN="${TRACKER_ADMIN_PASSWORD:-${TRACKER_PASSWORD:-admin}}"
 FAMILY="${TRACKER_FAMILY_PASSWORD:-family}"
 PORT="${PORT:-4000}"
+NO_TUNNEL="${NO_TUNNEL:-0}"   # 1 = run the app only (no cloudflared); used with Tailscale
 
 # Make sure launchd can find node and cloudflared (Homebrew paths included).
 RUN_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -63,6 +69,8 @@ cat > "$PLIST" <<PLISTEOF
     <string>$RUN_PATH</string>
     <key>PORT</key>
     <string>$PORT</string>
+    <key>NO_TUNNEL</key>
+    <string>$NO_TUNNEL</string>
     <key>TRACKER_ADMIN_PASSWORD</key>
     <string>$ADMIN</string>
     <key>TRACKER_FAMILY_PASSWORD</key>

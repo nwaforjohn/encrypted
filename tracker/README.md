@@ -1,7 +1,38 @@
-# 👛 Family Money Tracker
+# 👛 FundTrack
 
 A simple, shared budget and expense tracker for a household — reachable from
-every family member's phone or laptop over a **public Cloudflare tunnel**.
+every family member's phone or laptop over a **permanent public link**.
+
+## Permanent link (recommended) — Tailscale Funnel
+
+The free Cloudflare quick tunnel rotates its URL and drops often. For a URL
+that never changes and survives reboots, use **Tailscale Funnel**:
+
+1. Install Tailscale: <https://tailscale.com/download> (or `brew install --cask tailscale`).
+2. Open the Tailscale app and **sign in** (free account).
+3. Run:
+
+   ```bash
+   cd tracker
+   TRACKER_ADMIN_PASSWORD="your-admin-pw" \
+   TRACKER_FAMILY_PASSWORD="your-family-pw" \
+   ./tailscale-setup.sh
+   ```
+
+It runs the app in the background and prints two permanent links off one URL:
+
+```
+  ADMIN  link:  https://<your-mac>.<tailnet>.ts.net/admin
+  FAMILY link:  https://<your-mac>.<tailnet>.ts.net/
+```
+
+Same base URL for everyone; `/admin` shows the admin sign-in, `/` shows the
+family sign-in. The link is stable forever. Turn it off with
+`tailscale funnel --https=443 off`.
+
+---
+
+### Alternative: Cloudflare quick tunnel (temporary URL)
 
 - **Zero runtime dependencies** — just Node (built-in `http`), data in a JSON file.
 - **Admin-managed accounts** — the admin logs in with the admin password and

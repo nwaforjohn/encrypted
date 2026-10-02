@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Family Money Tracker — one command to run the app and expose it on a
+# FundTrack — one command to run the app and expose it on a
 # public Cloudflare tunnel (https://<random>.trycloudflare.com).
 #
 # Usage:
@@ -47,7 +47,7 @@ if command -v lsof >/dev/null 2>&1; then
   fi
 fi
 
-echo "Starting Family Money Tracker on port $PORT ..."
+echo "Starting FundTrack on port $PORT ..."
 node server.js &
 SERVER_PID=$!
 sleep 1
@@ -117,7 +117,7 @@ announce() {
   echo "$1" > data/public-url.txt
   echo ""
   echo "============================================================"
-  echo "  Family Money Tracker is LIVE  (USD)"
+  echo "  FundTrack is LIVE  (USD)"
   echo ""
   echo "  Public link:  $1"
   echo ""

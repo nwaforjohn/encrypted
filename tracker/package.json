@@ -1,5 +1,5 @@
 {
-  "name": "family-money-tracker",
+  "name": "fundtrack",
   "version": "1.0.0",
   "private": true,
   "description": "A shared family budget & expense tracker, exposable over a public Cloudflare tunnel. Zero runtime dependencies.",
