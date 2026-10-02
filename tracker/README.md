@@ -4,8 +4,11 @@ A simple, shared budget and expense tracker for a household — reachable from
 every family member's phone or laptop over a **public Cloudflare tunnel**.
 
 - **Zero runtime dependencies** — just Node (built-in `http`), data in a JSON file.
-- **Shared-password login** — sensible since the link is public.
-- **Track** income and expenses per family member, by category.
+- **Two roles, one public link** — an **admin** password (full control) and a
+  **family** password (add/view + chat only). The link is the same for everyone;
+  the password decides the role.
+- **Built-in chat** — admin and family can message each other live inside the app.
+- **Track** income and expenses per family member, by category. All amounts in **USD**.
 - **Budgets** — set a monthly limit per category and watch the bars fill up.
 - **Dashboard** — income, spending, net, per-member and per-category breakdowns,
   month-by-month.
@@ -14,7 +17,9 @@ every family member's phone or laptop over a **public Cloudflare tunnel**.
 
 ```bash
 cd tracker
-TRACKER_PASSWORD="choose-a-family-password" ./start.sh
+TRACKER_ADMIN_PASSWORD="your-admin-secret" \
+TRACKER_FAMILY_PASSWORD="your-family-secret" \
+./start.sh
 ```
 
 This will:
@@ -22,7 +27,19 @@ This will:
 2. open a public Cloudflare quick tunnel and print a link like
    `https://brave-river-1234.trycloudflare.com`.
 
-Share that link **and** the password with your family. Press `Ctrl+C` to stop.
+It then prints something like:
+
+```
+  ADMIN  link:  https://brave-river-1234.trycloudflare.com
+         password:  your-admin-secret   (full control)
+
+  FAMILY link:  https://brave-river-1234.trycloudflare.com
+         password:  your-family-secret  (add + view + chat)
+```
+
+**The link is the same for both** — share the *admin* password only with
+yourself and the *family* password with the rest of the household. Press
+`Ctrl+C` to stop.
 
 > `start.sh` downloads the `cloudflared` binary automatically if it isn't
 > already installed.
@@ -35,13 +52,28 @@ NO_TUNNEL=1 ./start.sh        # or:  npm start
 
 ## Configuration
 
-| Env var            | Default   | Purpose                                   |
-| ------------------ | --------- | ----------------------------------------- |
-| `TRACKER_PASSWORD` | `family`  | Shared login password — **change this**.  |
-| `PORT`             | `4000`    | Local port.                               |
-| `TRACKER_CURRENCY` | `$`       | Currency symbol shown in the UI.          |
-| `TRACKER_SECRET`   | random    | Session-cookie signing key (persisted by `start.sh` in `data/.secret`). |
-| `NO_TUNNEL`        | `0`       | Set to `1` to skip the public tunnel.     |
+| Env var                   | Default  | Purpose                                             |
+| ------------------------- | -------- | --------------------------------------------------- |
+| `TRACKER_ADMIN_PASSWORD`  | `admin`  | Admin login (full control) — **change this**.       |
+| `TRACKER_FAMILY_PASSWORD` | `family` | Family login (add/view + chat) — **change this**.   |
+| `TRACKER_PASSWORD`        | —        | Fallback used for the admin password if the specific one is unset. |
+| `PORT`                    | `4000`   | Local port.                                         |
+| `TRACKER_CURRENCY`        | `$`      | Currency symbol (USD by default).                   |
+| `TRACKER_SECRET`          | random   | Session-cookie signing key (persisted by `start.sh` in `data/.secret`). |
+| `NO_TUNNEL`               | `0`      | Set to `1` to skip the public tunnel.               |
+
+## Roles
+
+| Capability                              | Admin | Family |
+| --------------------------------------- | :---: | :----: |
+| View dashboard, budgets, transactions   |  ✅   |   ✅   |
+| Add income / expense                     |  ✅   |   ✅   |
+| Family chat                              |  ✅   |   ✅   |
+| Delete transactions                      |  ✅   |   —    |
+| Add / remove members                     |  ✅   |   —    |
+| Add / edit / delete categories & budgets |  ✅   |   —    |
+
+These are enforced on the server, not just hidden in the UI.
 
 ## Data & privacy
 

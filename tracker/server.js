@@ -20,7 +20,10 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
-const PASSWORD = process.env.TRACKER_PASSWORD || 'family';
+// Two roles: admin (full control) and family (add + view only).
+// TRACKER_PASSWORD is a convenient fallback for both if the specific ones are unset.
+const ADMIN_PASSWORD = process.env.TRACKER_ADMIN_PASSWORD || process.env.TRACKER_PASSWORD || 'admin';
+const FAMILY_PASSWORD = process.env.TRACKER_FAMILY_PASSWORD || process.env.TRACKER_PASSWORD || 'family';
 const SECRET = process.env.TRACKER_SECRET || crypto.randomBytes(32).toString('hex');
 const CURRENCY = process.env.TRACKER_CURRENCY || '$';
 
@@ -46,6 +49,7 @@ function defaultDb() {
       { id: id(), name: 'Fun', type: 'expense', budget: 150 },
     ],
     transactions: [],
+    chat: [],
   };
 }
 
@@ -61,6 +65,7 @@ function loadDb() {
     db.members ||= [];
     db.categories ||= [];
     db.transactions ||= [];
+    db.chat ||= [];
   } catch {
     db = defaultDb();
     saveDb();
@@ -84,28 +89,31 @@ function saveDb() {
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
-function makeToken() {
-  // token = base64(expiry).hmac  — expiry 30 days
+function makeToken(role) {
+  // token = base64("expiry|role").hmac  — expiry 30 days
   const exp = Date.now() + 30 * 24 * 60 * 60 * 1000;
-  const payload = String(exp);
+  const payload = `${exp}|${role}`;
   const sig = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
   return Buffer.from(payload).toString('base64url') + '.' + sig;
 }
 
+// Returns the role string ("admin" | "family") if valid, otherwise null.
 function verifyToken(token) {
-  if (!token || typeof token !== 'string' || !token.includes('.')) return false;
+  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
   const [b64, sig] = token.split('.');
   let payload;
   try {
     payload = Buffer.from(b64, 'base64url').toString('utf8');
   } catch {
-    return false;
+    return null;
   }
   const expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-  if (sig.length !== expected.length) return false;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return false;
-  const exp = parseInt(payload, 10);
-  return Number.isFinite(exp) && Date.now() < exp;
+  if (sig.length !== expected.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  const [expStr, role] = payload.split('|');
+  const exp = parseInt(expStr, 10);
+  if (!Number.isFinite(exp) || Date.now() >= exp) return null;
+  return role === 'admin' || role === 'family' ? role : null;
 }
 
 function constantEquals(a, b) {
@@ -125,7 +133,8 @@ function parseCookies(req) {
   return out;
 }
 
-function isAuthed(req) {
+// Returns the caller's role ("admin" | "family") or null if unauthenticated.
+function roleOf(req) {
   return verifyToken(parseCookies(req).ftoken);
 }
 
@@ -208,14 +217,19 @@ const server = http.createServer(async (req, res) => {
   try {
     // ---- public endpoints -------------------------------------------------
     if (p === '/api/session' && method === 'GET') {
-      return send(res, 200, { authenticated: isAuthed(req), currency: CURRENCY });
+      return send(res, 200, { role: roleOf(req), authenticated: !!roleOf(req), currency: CURRENCY });
     }
 
     if (p === '/api/login' && method === 'POST') {
       const body = await readBody(req);
-      if (constantEquals(str(body.password, 300), PASSWORD)) {
-        const cookie = `ftoken=${makeToken()}; HttpOnly; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`;
-        return send(res, 200, { ok: true, currency: CURRENCY }, { 'Set-Cookie': cookie });
+      const pw = str(body.password, 300);
+      // Check admin first so a shared fallback password grants admin.
+      let role = null;
+      if (constantEquals(pw, ADMIN_PASSWORD)) role = 'admin';
+      else if (constantEquals(pw, FAMILY_PASSWORD)) role = 'family';
+      if (role) {
+        const cookie = `ftoken=${makeToken(role)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`;
+        return send(res, 200, { ok: true, role, currency: CURRENCY }, { 'Set-Cookie': cookie });
       }
       return send(res, 401, { error: 'Wrong password' });
     }
@@ -230,10 +244,43 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---- everything below requires auth ----------------------------------
-    if (!isAuthed(req)) return send(res, 401, { error: 'unauthorized' });
+    const role = roleOf(req);
+    if (!role) return send(res, 401, { error: 'unauthorized' });
+    // Family can read data and add transactions; everything else is admin-only.
+    const isAdmin = role === 'admin';
+    const familyAllowed =
+      (p === '/api/data' && method === 'GET') ||
+      (p === '/api/transactions' && method === 'POST') ||
+      (p === '/api/chat'); // both roles can read and post chat
+    if (!isAdmin && !familyAllowed) {
+      return send(res, 403, { error: 'Admin access required for this action' });
+    }
 
     if (p === '/api/data' && method === 'GET') {
       return send(res, 200, db);
+    }
+
+    // ---- chat (admin + family) -------------------------------------------
+    if (p === '/api/chat' && method === 'GET') {
+      const since = parseInt(url.searchParams.get('since') || '0', 10) || 0;
+      const messages = db.chat.filter((m) => m.createdAt > since);
+      return send(res, 200, { messages, now: Date.now() });
+    }
+    if (p === '/api/chat' && method === 'POST') {
+      const b = await readBody(req);
+      const text = str(b.text, 2000);
+      if (!text) return send(res, 400, { error: 'empty message' });
+      const m = {
+        id: id(),
+        role,
+        name: str(b.name, 40) || (role === 'admin' ? 'Admin' : 'Family'),
+        text,
+        createdAt: Date.now(),
+      };
+      db.chat.push(m);
+      if (db.chat.length > 1000) db.chat = db.chat.slice(-1000); // cap history
+      saveDb();
+      return send(res, 200, m);
     }
 
     // ---- members ----------------------------------------------------------
@@ -342,6 +389,7 @@ function randomColor() {
 loadDb();
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  Family Money Tracker running at http://localhost:${PORT}`);
-  console.log(`  Shared password: ${PASSWORD === 'family' ? 'family  (set TRACKER_PASSWORD to change)' : '(set via TRACKER_PASSWORD)'}`);
+  console.log(`  Admin password:  ${ADMIN_PASSWORD}`);
+  console.log(`  Family password: ${FAMILY_PASSWORD}`);
   console.log(`  Data file: ${DB_FILE}\n`);
 });

@@ -17,8 +17,10 @@ cd "$(dirname "$0")"
 
 PORT="${PORT:-4000}"
 export PORT
-export TRACKER_PASSWORD="${TRACKER_PASSWORD:-family}"
-export TRACKER_CURRENCY="${TRACKER_CURRENCY:-$}"
+# Two roles. Distinct defaults so admin and family are genuinely separate.
+export TRACKER_ADMIN_PASSWORD="${TRACKER_ADMIN_PASSWORD:-${TRACKER_PASSWORD:-admin}}"
+export TRACKER_FAMILY_PASSWORD="${TRACKER_FAMILY_PASSWORD:-family}"
+export TRACKER_CURRENCY="${TRACKER_CURRENCY:-$}"   # USD
 
 # Persist a session secret so logins survive restarts.
 SECRET_FILE="data/.secret"
@@ -41,8 +43,9 @@ sleep 1
 
 if [ "${NO_TUNNEL:-0}" = "1" ]; then
   echo ""
-  echo "  Local only:  http://localhost:$PORT"
-  echo "  Password:    $TRACKER_PASSWORD"
+  echo "  Local only:       http://localhost:$PORT"
+  echo "  Admin password:   $TRACKER_ADMIN_PASSWORD"
+  echo "  Family password:  $TRACKER_FAMILY_PASSWORD"
   echo ""
   wait "$SERVER_PID"
   exit 0
@@ -83,12 +86,17 @@ done
 echo ""
 echo "============================================================"
 if [ -n "$URL" ]; then
-  echo "  Family Money Tracker is LIVE"
+  echo "  Family Money Tracker is LIVE  (USD)"
   echo ""
-  echo "  Public link:  $URL"
-  echo "  Password:     $TRACKER_PASSWORD"
+  echo "  ADMIN  link:  $URL"
+  echo "         password:  $TRACKER_ADMIN_PASSWORD   (full control)"
   echo ""
-  echo "  Share the link + password with your family."
+  echo "  FAMILY link:  $URL"
+  echo "         password:  $TRACKER_FAMILY_PASSWORD  (add + view + chat)"
+  echo ""
+  echo "  Same public link for everyone — the password decides the role."
+  echo "  Share the ADMIN password only with yourself, the FAMILY password"
+  echo "  with the rest of the household."
 else
   echo "  Could not open the public tunnel. Details:"
   echo ""
