@@ -52,20 +52,49 @@ if [ "${NO_TUNNEL:-0}" = "1" ]; then
 fi
 
 # --- ensure cloudflared is available -------------------------------------
-if ! command -v cloudflared >/dev/null 2>&1; then
-  echo "cloudflared not found — downloading ..."
+if command -v cloudflared >/dev/null 2>&1; then
+  CF="cloudflared"
+else
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
   ARCH="$(uname -m)"
   case "$ARCH" in
     x86_64|amd64) ARCH=amd64 ;;
     aarch64|arm64) ARCH=arm64 ;;
   esac
-  DEST="./cloudflared"
-  URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-${OS}-${ARCH}"
-  curl -fsSL -o "$DEST" "$URL" && chmod +x "$DEST"
-  CF="$DEST"
-else
-  CF="cloudflared"
+  BASE="https://github.com/cloudflare/cloudflared/releases/latest/download"
+  CF="./cloudflared"
+
+  if [ "$OS" = "darwin" ]; then
+    # On macOS, prefer Homebrew; otherwise the release ships a .tgz, not a bare binary.
+    if command -v brew >/dev/null 2>&1; then
+      echo "Installing cloudflared via Homebrew ..."
+      brew install cloudflared >/dev/null 2>&1 || true
+    fi
+    if command -v cloudflared >/dev/null 2>&1; then
+      CF="cloudflared"
+    else
+      echo "Downloading cloudflared (macOS $ARCH) ..."
+      TMP="$(mktemp -d)"
+      if curl -fsSL -o "$TMP/cf.tgz" "$BASE/cloudflared-darwin-${ARCH}.tgz" \
+         && tar -xzf "$TMP/cf.tgz" -C "$TMP"; then
+        cp "$TMP/cloudflared" ./cloudflared && chmod +x ./cloudflared
+      fi
+    fi
+  else
+    echo "Downloading cloudflared ($OS $ARCH) ..."
+    curl -fsSL -o ./cloudflared "$BASE/cloudflared-${OS}-${ARCH}" && chmod +x ./cloudflared
+  fi
+
+  if [ "$CF" = "./cloudflared" ] && [ ! -x ./cloudflared ]; then
+    echo ""
+    echo "  Couldn't install cloudflared automatically."
+    echo "  On macOS run:  brew install cloudflared"
+    echo "  Then re-run ./start.sh"
+    echo ""
+    echo "  The app is still running locally at http://localhost:$PORT"
+    wait "$SERVER_PID"
+    exit 1
+  fi
 fi
 
 echo "Opening public Cloudflare tunnel ..."
