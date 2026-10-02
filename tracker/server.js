@@ -50,6 +50,8 @@ function defaultDb() {
     ],
     transactions: [],
     chat: [],
+    bills: [],
+    goals: [],
   };
 }
 
@@ -66,6 +68,8 @@ function loadDb() {
     db.categories ||= [];
     db.transactions ||= [];
     db.chat ||= [];
+    db.bills ||= [];
+    db.goals ||= [];
   } catch {
     db = defaultDb();
     saveDb();
@@ -251,7 +255,10 @@ const server = http.createServer(async (req, res) => {
     const familyAllowed =
       (p === '/api/data' && method === 'GET') ||
       (p === '/api/transactions' && method === 'POST') ||
-      (p === '/api/chat'); // both roles can read and post chat
+      (p === '/api/chat' && method !== 'DELETE') ||          // read/post chat, but not clear-all
+      (p === '/api/export.csv' && method === 'GET') ||       // export is shared data
+      (p.startsWith('/api/bills/') && p.endsWith('/pay') && method === 'POST') ||       // log a bill payment
+      (p.startsWith('/api/goals/') && p.endsWith('/contribute') && method === 'POST');  // add to a goal
     if (!isAdmin && !familyAllowed) {
       return send(res, 403, { error: 'Admin access required for this action' });
     }
@@ -281,6 +288,132 @@ const server = http.createServer(async (req, res) => {
       if (db.chat.length > 1000) db.chat = db.chat.slice(-1000); // cap history
       saveDb();
       return send(res, 200, m);
+    }
+    if (p === '/api/chat' && method === 'DELETE') { // admin only (guarded above)
+      db.chat = [];
+      saveDb();
+      return send(res, 200, { ok: true });
+    }
+
+    // ---- CSV export (admin + family) -------------------------------------
+    if (p === '/api/export.csv' && method === 'GET') {
+      const esc = (v) => {
+        const s = String(v == null ? '' : v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      };
+      const rows = [['Date', 'Type', 'Amount', 'Category', 'Member', 'Note']];
+      db.transactions
+        .slice()
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+        .forEach((t) => {
+          const cat = db.categories.find((c) => c.id === t.categoryId);
+          const mem = db.members.find((m) => m.id === t.memberId);
+          rows.push([t.date, t.type, t.amount, cat ? cat.name : '', mem ? mem.name : '', t.note || '']);
+        });
+      const csv = rows.map((r) => r.map(esc).join(',')).join('\n');
+      return send(res, 200, csv, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="family-money.csv"',
+      });
+    }
+
+    // ---- recurring bills --------------------------------------------------
+    if (p === '/api/bills' && method === 'POST') {
+      const b = await readBody(req);
+      const name = str(b.name, 60);
+      if (!name) return send(res, 400, { error: 'name required' });
+      const bill = {
+        id: id(),
+        name,
+        amount: Math.abs(num(b.amount)),
+        categoryId: str(b.categoryId, 40),
+        memberId: str(b.memberId, 40),
+        dayOfMonth: Math.min(31, Math.max(1, Math.round(num(b.dayOfMonth)) || 1)),
+      };
+      db.bills.push(bill);
+      saveDb();
+      return send(res, 200, bill);
+    }
+    if (p.startsWith('/api/bills/') && p.endsWith('/pay') && method === 'POST') {
+      const bid = p.split('/')[3];
+      const bill = db.bills.find((x) => x.id === bid);
+      if (!bill) return send(res, 404, { error: 'not found' });
+      const t = {
+        id: id(),
+        date: new Date().toISOString().slice(0, 10),
+        amount: bill.amount,
+        type: 'expense',
+        memberId: bill.memberId,
+        categoryId: bill.categoryId,
+        note: bill.name + ' (bill)',
+        createdAt: Date.now(),
+      };
+      db.transactions.push(t);
+      saveDb();
+      return send(res, 200, t);
+    }
+    if (p.startsWith('/api/bills/') && method === 'PUT') {
+      const bid = p.split('/')[3];
+      const bill = db.bills.find((x) => x.id === bid);
+      if (!bill) return send(res, 404, { error: 'not found' });
+      const b = await readBody(req);
+      if (b.name !== undefined) bill.name = str(b.name, 60) || bill.name;
+      if (b.amount !== undefined) bill.amount = Math.abs(num(b.amount));
+      if (b.categoryId !== undefined) bill.categoryId = str(b.categoryId, 40);
+      if (b.memberId !== undefined) bill.memberId = str(b.memberId, 40);
+      if (b.dayOfMonth !== undefined) bill.dayOfMonth = Math.min(31, Math.max(1, Math.round(num(b.dayOfMonth)) || 1));
+      saveDb();
+      return send(res, 200, bill);
+    }
+    if (p.startsWith('/api/bills/') && method === 'DELETE') {
+      const bid = p.split('/')[3];
+      db.bills = db.bills.filter((x) => x.id !== bid);
+      saveDb();
+      return send(res, 200, { ok: true });
+    }
+
+    // ---- savings goals ----------------------------------------------------
+    if (p === '/api/goals' && method === 'POST') {
+      const b = await readBody(req);
+      const name = str(b.name, 60);
+      if (!name) return send(res, 400, { error: 'name required' });
+      const g = {
+        id: id(),
+        name,
+        target: Math.max(0, num(b.target)),
+        saved: Math.max(0, num(b.saved)),
+        color: str(b.color, 20) || randomColor(),
+      };
+      db.goals.push(g);
+      saveDb();
+      return send(res, 200, g);
+    }
+    if (p.startsWith('/api/goals/') && p.endsWith('/contribute') && method === 'POST') {
+      const gid = p.split('/')[3];
+      const g = db.goals.find((x) => x.id === gid);
+      if (!g) return send(res, 404, { error: 'not found' });
+      const b = await readBody(req);
+      g.saved = Math.max(0, (g.saved || 0) + num(b.amount));
+      saveDb();
+      return send(res, 200, g);
+    }
+    if (p.startsWith('/api/goals/') && method === 'PUT') {
+      const gid = p.split('/')[3];
+      const g = db.goals.find((x) => x.id === gid);
+      if (!g) return send(res, 404, { error: 'not found' });
+      const b = await readBody(req);
+      if (b.name !== undefined) g.name = str(b.name, 60) || g.name;
+      if (b.target !== undefined) g.target = Math.max(0, num(b.target));
+      if (b.saved !== undefined) g.saved = Math.max(0, num(b.saved));
+      if (b.color !== undefined) g.color = str(b.color, 20) || g.color;
+      saveDb();
+      return send(res, 200, g);
+    }
+    if (p.startsWith('/api/goals/') && method === 'DELETE') {
+      const gid = p.split('/')[3];
+      db.goals = db.goals.filter((x) => x.id !== gid);
+      saveDb();
+      return send(res, 200, { ok: true });
     }
 
     // ---- members ----------------------------------------------------------

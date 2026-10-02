@@ -7,11 +7,17 @@ every family member's phone or laptop over a **public Cloudflare tunnel**.
 - **Two roles, one public link** — an **admin** password (full control) and a
   **family** password (add/view + chat only). The link is the same for everyone;
   the password decides the role.
-- **Built-in chat** — admin and family can message each other live inside the app.
+- **Built-in chat** — admin and family can message each other live inside the app;
+  admin can clear the whole chat.
 - **Track** income and expenses per family member, by category. All amounts in **USD**.
 - **Budgets** — set a monthly limit per category and watch the bars fill up.
+- **Recurring bills** — save bills once, then log each payment with one tap.
+- **Savings goals** — set a target and watch progress as the family contributes.
+- **Charts** — spending by category and a 6-month income-vs-spending trend.
+- **CSV export** — download every transaction for a spreadsheet or taxes.
 - **Dashboard** — income, spending, net, per-member and per-category breakdowns,
   month-by-month.
+- **Autostart** — optional macOS login item so it runs without touching a terminal.
 
 ## Quick start
 
@@ -64,16 +70,45 @@ NO_TUNNEL=1 ./start.sh        # or:  npm start
 
 ## Roles
 
-| Capability                              | Admin | Family |
-| --------------------------------------- | :---: | :----: |
-| View dashboard, budgets, transactions   |  ✅   |   ✅   |
-| Add income / expense                     |  ✅   |   ✅   |
-| Family chat                              |  ✅   |   ✅   |
-| Delete transactions                      |  ✅   |   —    |
-| Add / remove members                     |  ✅   |   —    |
-| Add / edit / delete categories & budgets |  ✅   |   —    |
+| Capability                                | Admin | Family |
+| ----------------------------------------- | :---: | :----: |
+| View dashboard, charts, budgets, history   |  ✅   |   ✅   |
+| Add income / expense                       |  ✅   |   ✅   |
+| Family chat (send & read)                  |  ✅   |   ✅   |
+| Log a recurring-bill payment               |  ✅   |   ✅   |
+| Contribute to a savings goal               |  ✅   |   ✅   |
+| Export CSV                                  |  ✅   |   ✅   |
+| Delete transactions                        |  ✅   |   —    |
+| Add / remove members (profiles)            |  ✅   |   —    |
+| Add / edit / delete categories & budgets   |  ✅   |   —    |
+| Create / delete recurring bills            |  ✅   |   —    |
+| Create / delete savings goals              |  ✅   |   —    |
+| Clear all chat messages                    |  ✅   |   —    |
 
 These are enforced on the server, not just hidden in the UI.
+
+## Autostart (macOS)
+
+Run it once as a login item so you never need a terminal again:
+
+```bash
+cd tracker
+TRACKER_ADMIN_PASSWORD="your-admin-secret" \
+TRACKER_FAMILY_PASSWORD="your-family-secret" \
+./install-autostart.sh
+```
+
+It installs a `launchd` LaunchAgent that starts the app + tunnel at login and
+restarts them if they crash. Because the free tunnel URL changes on each
+restart, the current link is always written to:
+
+```
+tracker/data/public-url.txt      # cat this to get today's link
+tracker/data/autostart.log       # logs
+```
+
+Remove it with `./install-autostart.sh --uninstall`. For a link that never
+changes, ask about a named Cloudflare tunnel (free, needs a Cloudflare account).
 
 ## Data & privacy
 

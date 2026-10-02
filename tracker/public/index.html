@@ -132,6 +132,18 @@
   .msg.mine .m-name { color: #fff; }
   .msg .m-text { font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
   .msg .m-time { font-size: 10px; opacity: .6; margin-top: 3px; text-align: right; }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .charts { grid-template-columns: 1fr; } }
+  .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .chart-title .mini { font-weight: 400; color: var(--muted); }
+  .cbar-row { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 13px; }
+  .cbar-row .cname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .cbar-track { height: 14px; background: var(--panel-2); border-radius: 99px; overflow: hidden; }
+  .cbar-track > span { display: block; height: 100%; border-radius: 99px; }
+  .cbar-row .cval { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .legend-inline { display: flex; gap: 14px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .legend-inline .l { display: flex; align-items: center; gap: 5px; }
+  .legend-inline .sw { width: 10px; height: 10px; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -162,6 +174,7 @@
       <span class="m" id="monthLabel">—</span>
       <button id="nextMonth" aria-label="Next month">›</button>
     </div>
+    <button class="ghost small" id="exportBtn" title="Download all transactions as CSV">⬇ CSV</button>
     <button class="ghost small" id="logout">Sign out</button>
   </header>
 
@@ -169,6 +182,21 @@
     <div class="card"><div class="label">Income</div><div class="value pos" id="sumIncome">—</div><div class="sub" id="subIncome"></div></div>
     <div class="card"><div class="label">Spending</div><div class="value neg" id="sumExpense">—</div><div class="sub" id="subExpense"></div></div>
     <div class="card"><div class="label">Net this month</div><div class="value" id="sumNet">—</div><div class="sub" id="subNet"></div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="panel">
+    <h2>📊 Overview</h2>
+    <div class="charts">
+      <div class="chart-block">
+        <div class="chart-title">Spending by category <span class="mini">this month</span></div>
+        <div id="catChart"></div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-title">Income vs spending <span class="mini">last 6 months</span></div>
+        <div id="trendChart"></div>
+      </div>
+    </div>
   </div>
 
   <div class="grid">
@@ -218,6 +246,32 @@
         <div id="memberBreakdown"></div>
       </div>
 
+      <!-- Recurring bills -->
+      <div class="panel">
+        <h2>🔁 Recurring bills</h2>
+        <div id="billList"></div>
+        <form id="billForm" class="row hidden" style="margin-top:10px">
+          <div class="field" style="flex:1 1 120px"><label>Bill</label><input id="billName" placeholder="e.g. Netflix" /></div>
+          <div class="field" style="flex:0 0 90px"><label>Amount</label><input id="billAmount" type="number" min="0" step="0.01" placeholder="0" /></div>
+          <div class="field" style="flex:0 0 70px"><label>Day</label><input id="billDay" type="number" min="1" max="31" placeholder="1" /></div>
+          <div class="field"><label>Category</label><select id="billCategory"></select></div>
+          <div class="field"><label>Who</label><select id="billMember"></select></div>
+          <button class="primary small" type="submit" style="width:auto;align-self:flex-end">Add</button>
+        </form>
+      </div>
+
+      <!-- Savings goals -->
+      <div class="panel">
+        <h2>🏦 Savings goals</h2>
+        <div id="goalList"></div>
+        <form id="goalForm" class="row hidden" style="margin-top:10px">
+          <div class="field"><label>Goal</label><input id="goalName" placeholder="e.g. Holiday" /></div>
+          <div class="field" style="flex:0 0 110px"><label>Target</label><input id="goalTarget" type="number" min="0" step="1" placeholder="0" /></div>
+          <div class="field" style="flex:0 0 110px"><label>Saved</label><input id="goalSaved" type="number" min="0" step="1" placeholder="0" /></div>
+          <button class="primary small" type="submit" style="width:auto;align-self:flex-end">Add</button>
+        </form>
+      </div>
+
       <!-- Manage (admin only) -->
       <div class="panel" id="managePanel">
         <h2>⚙️ Family &amp; categories</h2>
@@ -244,7 +298,8 @@
 
   <!-- Family chat -->
   <div class="panel" id="chatPanel">
-    <h2>💬 Family chat <span class="mini">admin &amp; family · live</span></h2>
+    <h2>💬 Family chat <span class="mini">admin &amp; family · live</span>
+      <button id="clearChatBtn" class="ghost small hidden" style="margin-left:auto">Clear all</button></h2>
     <div class="row" style="margin-bottom:8px">
       <div class="field" style="flex:0 0 160px"><label>Your name</label>
         <input id="chatName" placeholder="e.g. Mum" autocomplete="off" /></div>
@@ -259,7 +314,7 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
-let state = { members: [], categories: [], transactions: [] };
+let state = { members: [], categories: [], transactions: [], bills: [], goals: [] };
 let currency = '$';
 let role = null; // "admin" | "family"
 let viewMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -329,6 +384,11 @@ function applyRole() {
   const admin = role === 'admin';
   const panel = $('#managePanel');
   if (panel) panel.classList.toggle('hidden', !admin);
+  // admin-only forms / actions
+  ['#billForm', '#goalForm', '#clearChatBtn'].forEach((sel) => {
+    const e = $(sel);
+    if (e) e.classList.toggle('hidden', !admin);
+  });
   const badge = $('#roleBadge');
   badge.textContent = admin ? 'Admin' : 'Family';
   badge.className = 'badge ' + (admin ? 'badge-admin' : 'badge-family');
@@ -352,6 +412,130 @@ function render() {
   renderMemberBreakdown();
   renderMemberChips();
   renderCategories();
+  renderCharts();
+  renderBills();
+  renderGoals();
+}
+
+// palette for category charts
+const PALETTE = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#8b5cf6', '#ef4444', '#14b8a6', '#eab308', '#3b82f6'];
+
+function renderCharts() {
+  // --- spending by category (current month) ---
+  const tx = monthTx().filter((t) => t.type === 'expense');
+  const totals = {};
+  tx.forEach((t) => { totals[t.categoryId] = (totals[t.categoryId] || 0) + t.amount; });
+  const rows = Object.entries(totals)
+    .map(([cid, amt]) => ({ name: (catById(cid) || {}).name || 'Uncategorised', amt }))
+    .sort((a, b) => b.amt - a.amt);
+  const max = Math.max(1, ...rows.map((r) => r.amt));
+  const el = $('#catChart');
+  el.innerHTML = rows.length
+    ? rows.map((r, i) => `<div class="cbar-row">
+        <span class="cname">${esc(r.name)}</span>
+        <span class="cbar-track"><span style="width:${(r.amt / max) * 100}%;background:${PALETTE[i % PALETTE.length]}"></span></span>
+        <span class="cval">${fmt(r.amt)}</span>
+      </div>`).join('')
+    : '<div class="empty">No spending this month yet.</div>';
+
+  // --- income vs spending, last 6 months (SVG) ---
+  const months = [];
+  const [yy, mm] = viewMonth.split('-').map(Number);
+  for (let k = 5; k >= 0; k--) {
+    const d = new Date(yy, mm - 1 - k, 1);
+    const key = d.toISOString().slice(0, 7);
+    const mtx = state.transactions.filter((t) => (t.date || '').slice(0, 7) === key);
+    months.push({
+      label: d.toLocaleDateString(undefined, { month: 'short' }),
+      income: mtx.filter((t) => t.type === 'income').reduce((a, t) => a + t.amount, 0),
+      expense: mtx.filter((t) => t.type === 'expense').reduce((a, t) => a + t.amount, 0),
+    });
+  }
+  const peak = Math.max(1, ...months.map((m) => Math.max(m.income, m.expense)));
+  const W = 320, H = 150, pad = 20, bw = (W - pad * 2) / months.length;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Income vs spending by month" style="max-width:360px">`;
+  svg += `<line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="var(--line)"/>`;
+  months.forEach((m, i) => {
+    const x = pad + i * bw;
+    const barW = bw * 0.32;
+    const ih = (m.income / peak) * (H - pad * 2);
+    const eh = (m.expense / peak) * (H - pad * 2);
+    svg += `<rect x="${x + bw * 0.14}" y="${H - pad - ih}" width="${barW}" height="${ih}" rx="2" fill="var(--pos)"/>`;
+    svg += `<rect x="${x + bw * 0.52}" y="${H - pad - eh}" width="${barW}" height="${eh}" rx="2" fill="var(--neg)"/>`;
+    svg += `<text x="${x + bw / 2}" y="${H - pad + 12}" text-anchor="middle" font-size="9" fill="var(--muted)">${esc(m.label)}</text>`;
+  });
+  svg += '</svg>';
+  $('#trendChart').innerHTML = svg +
+    `<div class="legend-inline">
+      <span class="l"><span class="sw" style="background:var(--pos)"></span>Income</span>
+      <span class="l"><span class="sw" style="background:var(--neg)"></span>Spending</span>
+    </div>`;
+}
+
+function renderBills() {
+  const el = $('#billList');
+  const admin = role === 'admin';
+  if (!state.bills.length) {
+    el.innerHTML = '<div class="empty">No recurring bills yet.</div>';
+  } else {
+    el.innerHTML = state.bills.map((bl) => {
+      const cat = catById(bl.categoryId);
+      const who = memberById(bl.memberId);
+      return `<div class="budget">
+        <div class="b-top">
+          <span class="b-name">${esc(bl.name)} <span class="b-num">· day ${bl.dayOfMonth}${cat ? ' · ' + esc(cat.name) : ''}${who ? ' · ' + esc(who.name) : ''}</span></span>
+          <span class="b-num">
+            ${fmt(bl.amount)}
+            <button class="small primary" data-paybill="${bl.id}" style="padding:4px 8px;width:auto;margin-left:6px">Log</button>
+            ${admin ? `<span class="x" data-delbill="${bl.id}" style="cursor:pointer;color:var(--muted);font-weight:700;margin-left:6px">×</span>` : ''}
+          </span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  el.querySelectorAll('[data-paybill]').forEach((b) => b.addEventListener('click', async () => {
+    await api('/bills/' + b.dataset.paybill + '/pay', { method: 'POST' });
+    await load();
+  }));
+  el.querySelectorAll('[data-delbill]').forEach((x) => x.addEventListener('click', async () => {
+    if (!confirm('Delete this recurring bill?')) return;
+    await api('/bills/' + x.dataset.delbill, { method: 'DELETE' });
+    await load();
+  }));
+  // fill bill selects
+  $('#billCategory').innerHTML = state.categories.filter((c) => c.type === 'expense').map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('#billMember').innerHTML = state.members.map((m) => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+}
+
+function renderGoals() {
+  const el = $('#goalList');
+  const admin = role === 'admin';
+  if (!state.goals.length) { el.innerHTML = '<div class="empty">No savings goals yet.</div>'; return; }
+  el.innerHTML = state.goals.map((g) => {
+    const pct = g.target > 0 ? Math.min(100, (g.saved / g.target) * 100) : 0;
+    return `<div class="budget">
+      <div class="b-top">
+        <span class="b-name">${esc(g.name)}</span>
+        <span class="b-num">${fmt(g.saved)} / ${fmt(g.target)}
+          <button class="small primary" data-addgoal="${g.id}" style="padding:4px 8px;width:auto;margin-left:6px">+ Add</button>
+          ${admin ? `<span class="x" data-delgoal="${g.id}" style="cursor:pointer;color:var(--muted);font-weight:700;margin-left:6px">×</span>` : ''}
+        </span>
+      </div>
+      <div class="bar"><span style="width:${pct}%;background:${esc(g.color)}"></span></div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('[data-addgoal]').forEach((b) => b.addEventListener('click', async () => {
+    const v = prompt('How much to add to this goal?');
+    const amt = parseFloat(v);
+    if (!Number.isFinite(amt) || amt === 0) return;
+    await api('/goals/' + b.dataset.addgoal + '/contribute', { method: 'POST', body: { amount: amt } });
+    await load();
+  }));
+  el.querySelectorAll('[data-delgoal]').forEach((x) => x.addEventListener('click', async () => {
+    if (!confirm('Delete this savings goal?')) return;
+    await api('/goals/' + x.dataset.delgoal, { method: 'DELETE' });
+    await load();
+  }));
 }
 
 function renderSummary() {
@@ -517,6 +701,45 @@ $('#catForm').addEventListener('submit', async (e) => {
   }});
   $('#catName').value = ''; $('#catBudget').value = '';
   await load();
+});
+
+$('#billForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#billName').value.trim();
+  if (!name) return;
+  await api('/bills', { method: 'POST', body: {
+    name,
+    amount: parseFloat($('#billAmount').value) || 0,
+    dayOfMonth: parseInt($('#billDay').value, 10) || 1,
+    categoryId: $('#billCategory').value,
+    memberId: $('#billMember').value,
+  }});
+  $('#billName').value = ''; $('#billAmount').value = ''; $('#billDay').value = '';
+  await load();
+});
+
+$('#goalForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#goalName').value.trim();
+  if (!name) return;
+  await api('/goals', { method: 'POST', body: {
+    name,
+    target: parseFloat($('#goalTarget').value) || 0,
+    saved: parseFloat($('#goalSaved').value) || 0,
+  }});
+  $('#goalName').value = ''; $('#goalTarget').value = ''; $('#goalSaved').value = '';
+  await load();
+});
+
+// Export CSV — a normal navigation so the browser downloads it (cookie sent automatically).
+$('#exportBtn').addEventListener('click', () => { window.location.href = '/api/export.csv'; });
+
+// Clear all chat (admin).
+$('#clearChatBtn').addEventListener('click', async () => {
+  if (!confirm('Delete ALL chat messages for everyone? This cannot be undone.')) return;
+  await api('/chat', { method: 'DELETE' });
+  chatMsgs = []; lastChatTs = 0;
+  renderChat();
 });
 
 // ---- chat ----

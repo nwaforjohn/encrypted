@@ -112,6 +112,9 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
+# Record the current public URL so a background/autostart run can surface it.
+if [ -n "$URL" ]; then echo "$URL" > data/public-url.txt; fi
+
 echo ""
 echo "============================================================"
 if [ -n "$URL" ]; then
