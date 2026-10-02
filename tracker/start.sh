@@ -99,46 +99,60 @@ fi
 
 echo "Opening public Cloudflare tunnel ..."
 TUNLOG="$(mktemp)"
-# http2 protocol is friendlier to restrictive/proxied networks than QUIC/UDP.
-"$CF" tunnel --no-autoupdate --protocol http2 --url "http://localhost:$PORT" >"$TUNLOG" 2>&1 &
-TUNNEL_PID=$!
 
-# --- wait for the public URL to appear -----------------------------------
-URL=""
-for i in $(seq 1 30); do
-  URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNLOG" | head -1 || true)"
-  [ -n "$URL" ] && break
-  if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then break; fi
-  sleep 1
-done
-
-# Record the current public URL so a background/autostart run can surface it.
-if [ -n "$URL" ]; then echo "$URL" > data/public-url.txt; fi
-
-echo ""
-echo "============================================================"
-if [ -n "$URL" ]; then
+announce() {
+  echo "$1" > data/public-url.txt
+  echo ""
+  echo "============================================================"
   echo "  Family Money Tracker is LIVE  (USD)"
   echo ""
-  echo "  ADMIN  link:  $URL"
-  echo "         password:  $TRACKER_ADMIN_PASSWORD   (full control)"
+  echo "  Public link:  $1"
   echo ""
-  echo "  FAMILY link:  $URL"
-  echo "         password:  $TRACKER_FAMILY_PASSWORD  (add + view + chat)"
-  echo ""
-  echo "  Same public link for everyone — the password decides the role."
-  echo "  Share the ADMIN password only with yourself, the FAMILY password"
-  echo "  with the rest of the household."
-else
-  echo "  Could not open the public tunnel. Details:"
-  echo ""
-  sed 's/^/    /' "$TUNLOG" | tail -n 8
-  echo ""
-  echo "  The app is still running locally at http://localhost:$PORT"
-  echo "  (A 403 here means the network blocks api.trycloudflare.com.)"
-fi
-echo "============================================================"
-echo "  Press Ctrl+C to stop."
-echo ""
+  echo "  Admin:  sign in with the admin password (leave email box empty)."
+  echo "  Family: sign in with the account you created for them."
+  echo "============================================================"
+}
 
-wait "$SERVER_PID"
+# Supervise the tunnel: keep it alive across drops (each relaunch gets a new
+# quick-tunnel URL, written to data/public-url.txt). If the app server itself
+# dies, exit non-zero so the service manager (launchd) restarts everything.
+# No --protocol override: cloudflared negotiates QUIC and falls back to http2,
+# which is the most reliable combination on a normal home network.
+while kill -0 "$SERVER_PID" 2>/dev/null; do
+  : > "$TUNLOG"
+  "$CF" tunnel --no-autoupdate --url "http://localhost:$PORT" >"$TUNLOG" 2>&1 &
+  TUNNEL_PID=$!
+
+  URL=""
+  for i in $(seq 1 30); do
+    URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNLOG" | head -1 || true)"
+    [ -n "$URL" ] && break
+    kill -0 "$TUNNEL_PID" 2>/dev/null || break
+    sleep 1
+  done
+
+  if [ -n "$URL" ]; then
+    announce "$URL"
+  else
+    echo "  Tunnel didn't come up. Recent output:"
+    sed 's/^/    /' "$TUNLOG" | tail -n 6
+    echo "  (A 403 here means the network blocks api.trycloudflare.com.)"
+    echo "  App still running locally at http://localhost:$PORT"
+  fi
+
+  # Watch both; leave this inner loop (to relaunch the tunnel) when it drops.
+  while kill -0 "$TUNNEL_PID" 2>/dev/null; do
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+      kill "$TUNNEL_PID" 2>/dev/null || true
+      echo "App server exited — stopping so it can be restarted."
+      exit 1
+    fi
+    sleep 5
+  done
+
+  echo "$(date '+%Y-%m-%d %H:%M:%S') tunnel dropped — relaunching in 3s ..."
+  sleep 3
+done
+
+echo "App server exited."
+exit 1
