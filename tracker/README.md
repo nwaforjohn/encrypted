@@ -4,9 +4,13 @@ A simple, shared budget and expense tracker for a household — reachable from
 every family member's phone or laptop over a **public Cloudflare tunnel**.
 
 - **Zero runtime dependencies** — just Node (built-in `http`), data in a JSON file.
-- **Two roles, one public link** — an **admin** password (full control) and a
-  **family** password (add/view + chat only). The link is the same for everyone;
-  the password decides the role.
+- **Admin-managed accounts** — the admin logs in with the admin password and
+  creates a secure login (email/username + password) for each family member.
+- **Family is view-only** — family members see the whole dashboard but can't
+  move money. To add (credit) or subtract (debit), they **send the admin a
+  request**; the admin approves it and the balance updates.
+- **One public link** — the same link for everyone; who you log in as decides
+  what you can do.
 - **Built-in chat** — admin and family can message each other live inside the app;
   admin can clear the whole chat.
 - **Track** income and expenses per family member, by category. All amounts in **USD**.
@@ -73,19 +77,35 @@ NO_TUNNEL=1 ./start.sh        # or:  npm start
 | Capability                                | Admin | Family |
 | ----------------------------------------- | :---: | :----: |
 | View dashboard, charts, budgets, history   |  ✅   |   ✅   |
-| Add income / expense                       |  ✅   |   ✅   |
 | Family chat (send & read)                  |  ✅   |   ✅   |
-| Log a recurring-bill payment               |  ✅   |   ✅   |
-| Contribute to a savings goal               |  ✅   |   ✅   |
 | Export CSV                                  |  ✅   |   ✅   |
-| Delete transactions                        |  ✅   |   —    |
+| **Request** a credit / debit               |  —    |   ✅   |
+| Add / edit / delete transactions           |  ✅   |   —    |
+| Approve / decline family requests          |  ✅   |   —    |
+| Create / delete family accounts            |  ✅   |   —    |
+| Log bill payments, contribute to goals     |  ✅   |   —    |
 | Add / remove members (profiles)            |  ✅   |   —    |
 | Add / edit / delete categories & budgets   |  ✅   |   —    |
-| Create / delete recurring bills            |  ✅   |   —    |
-| Create / delete savings goals              |  ✅   |   —    |
+| Create / delete bills & savings goals      |  ✅   |   —    |
 | Clear all chat messages                    |  ✅   |   —    |
 
 These are enforced on the server, not just hidden in the UI.
+
+## How family accounts & requests work
+
+1. **Admin signs in** with the admin password (leave the email/username box empty).
+2. In **🔐 Family accounts**, the admin creates a login for each member
+   (display name, username, optional email, password).
+3. **Family signs in** with their email/username + password and gets a
+   **view-only** dashboard.
+4. When a family member wants money added or removed, they use **✋ Request a
+   change** (credit = add, debit = subtract). It also drops a line in the chat.
+5. The admin sees it under **📥 Requests** and taps **Approve** (which creates
+   the transaction) or **Decline**.
+
+> The old shared `TRACKER_FAMILY_PASSWORD` still works as a generic view-only
+> family login. To go accounts-only, set it empty (`TRACKER_FAMILY_PASSWORD=""`)
+> and rely on the per-member accounts.
 
 ## Autostart (macOS)
 

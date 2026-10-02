@@ -52,6 +52,8 @@ function defaultDb() {
     chat: [],
     bills: [],
     goals: [],
+    users: [],      // family login accounts created by the admin
+    requests: [],   // family credit/debit requests awaiting admin action
   };
 }
 
@@ -70,6 +72,8 @@ function loadDb() {
     db.chat ||= [];
     db.bills ||= [];
     db.goals ||= [];
+    db.users ||= [];
+    db.requests ||= [];
   } catch {
     db = defaultDb();
     saveDb();
@@ -93,31 +97,44 @@ function saveDb() {
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
-function makeToken(role) {
-  // token = base64("expiry|role").hmac  — expiry 30 days
-  const exp = Date.now() + 30 * 24 * 60 * 60 * 1000;
-  const payload = `${exp}|${role}`;
+// A session carries { role: "admin"|"family", uid: <userId|null>, name }.
+function makeToken(sess) {
+  const payloadObj = { role: sess.role, uid: sess.uid || null, name: sess.name || '', exp: Date.now() + 30 * 24 * 60 * 60 * 1000 };
+  const payload = Buffer.from(JSON.stringify(payloadObj)).toString('base64url');
   const sig = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-  return Buffer.from(payload).toString('base64url') + '.' + sig;
+  return payload + '.' + sig;
 }
 
-// Returns the role string ("admin" | "family") if valid, otherwise null.
+// Returns the session object if valid, otherwise null.
 function verifyToken(token) {
   if (!token || typeof token !== 'string' || !token.includes('.')) return null;
   const [b64, sig] = token.split('.');
-  let payload;
+  const expected = crypto.createHmac('sha256', SECRET).update(b64).digest('hex');
+  if (!sig || sig.length !== expected.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  let obj;
   try {
-    payload = Buffer.from(b64, 'base64url').toString('utf8');
+    obj = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
   } catch {
     return null;
   }
-  const expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
-  if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-  const [expStr, role] = payload.split('|');
-  const exp = parseInt(expStr, 10);
-  if (!Number.isFinite(exp) || Date.now() >= exp) return null;
-  return role === 'admin' || role === 'family' ? role : null;
+  if (!obj || (obj.role !== 'admin' && obj.role !== 'family')) return null;
+  if (!Number.isFinite(obj.exp) || Date.now() >= obj.exp) return null;
+  return { role: obj.role, uid: obj.uid || null, name: obj.name || '' };
+}
+
+// ---- password hashing (scrypt) for family accounts ----
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(pw), salt, 64).toString('hex');
+  return { salt, hash };
+}
+function verifyPassword(pw, salt, hash) {
+  if (!salt || !hash) return false;
+  const h = crypto.scryptSync(String(pw), salt, 64).toString('hex');
+  const a = Buffer.from(h);
+  const b = Buffer.from(hash);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function constantEquals(a, b) {
@@ -137,8 +154,8 @@ function parseCookies(req) {
   return out;
 }
 
-// Returns the caller's role ("admin" | "family") or null if unauthenticated.
-function roleOf(req) {
+// Returns the caller's session object or null if unauthenticated.
+function sessionOf(req) {
   return verifyToken(parseCookies(req).ftoken);
 }
 
@@ -221,21 +238,40 @@ const server = http.createServer(async (req, res) => {
   try {
     // ---- public endpoints -------------------------------------------------
     if (p === '/api/session' && method === 'GET') {
-      return send(res, 200, { role: roleOf(req), authenticated: !!roleOf(req), currency: CURRENCY });
+      const s = sessionOf(req);
+      return send(res, 200, {
+        authenticated: !!s,
+        role: s ? s.role : null,
+        name: s ? s.name : null,
+        currency: CURRENCY,
+      });
     }
 
     if (p === '/api/login' && method === 'POST') {
       const body = await readBody(req);
       const pw = str(body.password, 300);
-      // Check admin first so a shared fallback password grants admin.
-      let role = null;
-      if (constantEquals(pw, ADMIN_PASSWORD)) role = 'admin';
-      else if (constantEquals(pw, FAMILY_PASSWORD)) role = 'family';
-      if (role) {
-        const cookie = `ftoken=${makeToken(role)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`;
-        return send(res, 200, { ok: true, role, currency: CURRENCY }, { 'Set-Cookie': cookie });
+      const login = str(body.username, 120).toLowerCase(); // username or email
+      let sess = null;
+
+      if (login) {
+        // Family account login (admin-created): match username OR email.
+        const user = db.users.find(
+          (u) => u.username.toLowerCase() === login || (u.email || '').toLowerCase() === login,
+        );
+        if (user && verifyPassword(pw, user.salt, user.hash)) {
+          sess = { role: 'family', uid: user.id, name: user.displayName || user.username };
+        }
+      } else {
+        // Password-only: admin, or the legacy shared-family password (if set).
+        if (constantEquals(pw, ADMIN_PASSWORD)) sess = { role: 'admin', uid: null, name: 'Admin' };
+        else if (FAMILY_PASSWORD && constantEquals(pw, FAMILY_PASSWORD)) sess = { role: 'family', uid: null, name: 'Family' };
       }
-      return send(res, 401, { error: 'Wrong password' });
+
+      if (sess) {
+        const cookie = `ftoken=${makeToken(sess)}; HttpOnly; Path=/; Max-Age=${30 * 24 * 60 * 60}; SameSite=Lax`;
+        return send(res, 200, { ok: true, role: sess.role, name: sess.name, currency: CURRENCY }, { 'Set-Cookie': cookie });
+      }
+      return send(res, 401, { error: login ? 'Wrong email/username or password' : 'Wrong password' });
     }
 
     if (p === '/api/logout' && method === 'POST') {
@@ -248,23 +284,37 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ---- everything below requires auth ----------------------------------
-    const role = roleOf(req);
-    if (!role) return send(res, 401, { error: 'unauthorized' });
-    // Family can read data and add transactions; everything else is admin-only.
+    const session = sessionOf(req);
+    if (!session) return send(res, 401, { error: 'unauthorized' });
+    const role = session.role;
     const isAdmin = role === 'admin';
+    // Family is VIEW-ONLY on the money. To move money they file a request the
+    // admin approves. So family may: read data, chat, export, and file/see requests.
     const familyAllowed =
       (p === '/api/data' && method === 'GET') ||
-      (p === '/api/transactions' && method === 'POST') ||
-      (p === '/api/chat' && method !== 'DELETE') ||          // read/post chat, but not clear-all
-      (p === '/api/export.csv' && method === 'GET') ||       // export is shared data
-      (p.startsWith('/api/bills/') && p.endsWith('/pay') && method === 'POST') ||       // log a bill payment
-      (p.startsWith('/api/goals/') && p.endsWith('/contribute') && method === 'POST');  // add to a goal
+      (p === '/api/chat' && method !== 'DELETE') ||          // read/post chat, not clear-all
+      (p === '/api/export.csv' && method === 'GET') ||       // export is shared, read-only
+      (p === '/api/requests' && (method === 'GET' || method === 'POST')); // file & view requests
     if (!isAdmin && !familyAllowed) {
-      return send(res, 403, { error: 'Admin access required for this action' });
+      return send(res, 403, { error: 'Admin access required — ask the admin to credit/debit the balance.' });
     }
 
     if (p === '/api/data' && method === 'GET') {
-      return send(res, 200, db);
+      // Never leak password hashes. Admin sees the account list (sanitised);
+      // family sees only their own pending/resolved requests, not other accounts.
+      const safeUsers = db.users.map((u) => ({ id: u.id, username: u.username, email: u.email || '', displayName: u.displayName || u.username }));
+      const payload = {
+        members: db.members,
+        categories: db.categories,
+        transactions: db.transactions,
+        chat: db.chat,
+        bills: db.bills,
+        goals: db.goals,
+        users: isAdmin ? safeUsers : [],
+        requests: isAdmin ? db.requests : db.requests.filter((r) => r.userId === session.uid),
+        me: { role, uid: session.uid, name: session.name },
+      };
+      return send(res, 200, payload);
     }
 
     // ---- chat (admin + family) -------------------------------------------
@@ -293,6 +343,109 @@ const server = http.createServer(async (req, res) => {
       db.chat = [];
       saveDb();
       return send(res, 200, { ok: true });
+    }
+
+    // ---- family accounts (admin only) ------------------------------------
+    if (p === '/api/users' && method === 'POST') {
+      const b = await readBody(req);
+      const username = str(b.username, 40).toLowerCase().replace(/\s+/g, '');
+      const email = str(b.email, 120).toLowerCase();
+      const password = str(b.password, 300);
+      const displayName = str(b.displayName, 60) || str(b.username, 40);
+      if (!username) return send(res, 400, { error: 'username required' });
+      if (password.length < 4) return send(res, 400, { error: 'password too short (min 4)' });
+      if (db.users.some((u) => u.username.toLowerCase() === username)) return send(res, 400, { error: 'username already exists' });
+      if (email && db.users.some((u) => (u.email || '').toLowerCase() === email)) return send(res, 400, { error: 'email already exists' });
+      const { salt, hash } = hashPassword(password);
+      const user = { id: id(), username, email, displayName, salt, hash, createdAt: Date.now() };
+      db.users.push(user);
+      saveDb();
+      return send(res, 200, { id: user.id, username, email, displayName });
+    }
+    if (p.startsWith('/api/users/') && method === 'PUT') { // reset password / rename
+      const uid = p.split('/')[3];
+      const user = db.users.find((u) => u.id === uid);
+      if (!user) return send(res, 404, { error: 'not found' });
+      const b = await readBody(req);
+      if (b.displayName !== undefined) user.displayName = str(b.displayName, 60) || user.displayName;
+      if (b.email !== undefined) user.email = str(b.email, 120).toLowerCase();
+      if (b.password) {
+        if (str(b.password, 300).length < 4) return send(res, 400, { error: 'password too short (min 4)' });
+        const { salt, hash } = hashPassword(str(b.password, 300));
+        user.salt = salt;
+        user.hash = hash;
+      }
+      saveDb();
+      return send(res, 200, { id: user.id, username: user.username, email: user.email, displayName: user.displayName });
+    }
+    if (p.startsWith('/api/users/') && method === 'DELETE') {
+      const uid = p.split('/')[3];
+      db.users = db.users.filter((u) => u.id !== uid);
+      saveDb();
+      return send(res, 200, { ok: true });
+    }
+
+    // ---- credit/debit requests -------------------------------------------
+    // Family files a request; the admin approves (creating a transaction) or declines.
+    if (p === '/api/requests' && method === 'GET') {
+      const list = isAdmin ? db.requests : db.requests.filter((r) => r.userId === session.uid);
+      return send(res, 200, { requests: list });
+    }
+    if (p === '/api/requests' && method === 'POST') {
+      const b = await readBody(req);
+      const kind = pick(b.kind, ['credit', 'debit'], 'credit'); // credit=add income, debit=expense
+      const amount = Math.abs(num(b.amount));
+      if (!amount) return send(res, 400, { error: 'amount required' });
+      const r = {
+        id: id(),
+        userId: session.uid,
+        userName: session.name || 'Family',
+        kind,
+        amount,
+        note: str(b.note, 300),
+        status: 'pending',
+        createdAt: Date.now(),
+        resolvedAt: null,
+      };
+      db.requests.push(r);
+      // Also drop a chat line so the admin "gets a message".
+      db.chat.push({
+        id: id(),
+        role,
+        name: r.userName,
+        text: `💰 Requested to ${kind === 'credit' ? 'CREDIT (add)' : 'DEBIT (subtract)'} ${CURRENCY}${amount.toFixed(2)}${r.note ? ' — ' + r.note : ''}`,
+        createdAt: Date.now(),
+      });
+      if (db.chat.length > 1000) db.chat = db.chat.slice(-1000);
+      saveDb();
+      return send(res, 200, r);
+    }
+    if (p.startsWith('/api/requests/') && (p.endsWith('/approve') || p.endsWith('/decline')) && method === 'POST') {
+      if (!isAdmin) return send(res, 403, { error: 'Admin access required for this action' });
+      const rid = p.split('/')[3];
+      const r = db.requests.find((x) => x.id === rid);
+      if (!r) return send(res, 404, { error: 'not found' });
+      if (r.status !== 'pending') return send(res, 400, { error: 'already resolved' });
+      const b = await readBody(req).catch(() => ({}));
+      if (p.endsWith('/approve')) {
+        // Create the transaction the request asked for.
+        db.transactions.push({
+          id: id(),
+          date: new Date().toISOString().slice(0, 10),
+          amount: r.amount,
+          type: r.kind === 'credit' ? 'income' : 'expense',
+          memberId: str(b.memberId, 40),
+          categoryId: str(b.categoryId, 40),
+          note: `${r.userName}: ${r.note || (r.kind === 'credit' ? 'credit' : 'debit')} (approved)`,
+          createdAt: Date.now(),
+        });
+        r.status = 'approved';
+      } else {
+        r.status = 'declined';
+      }
+      r.resolvedAt = Date.now();
+      saveDb();
+      return send(res, 200, r);
     }
 
     // ---- CSV export (admin + family) -------------------------------------
