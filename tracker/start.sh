@@ -36,6 +36,17 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Free the port if a stale instance is still holding it, so we never crash-loop
+# on EADDRINUSE (e.g. an old manual run left open in a terminal).
+if command -v lsof >/dev/null 2>&1; then
+  STALE="$(lsof -ti tcp:"$PORT" 2>/dev/null || true)"
+  if [ -n "$STALE" ]; then
+    echo "Port $PORT was busy (pids: $STALE) — freeing it ..."
+    echo "$STALE" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+fi
+
 echo "Starting Family Money Tracker on port $PORT ..."
 node server.js &
 SERVER_PID=$!
@@ -54,6 +65,8 @@ fi
 # --- ensure cloudflared is available -------------------------------------
 if command -v cloudflared >/dev/null 2>&1; then
   CF="cloudflared"
+elif [ -x ./cloudflared ]; then
+  CF="./cloudflared"   # reuse a previously downloaded binary
 else
   OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
   ARCH="$(uname -m)"
