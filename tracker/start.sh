@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#
+# Family Money Tracker — one command to run the app and expose it on a
+# public Cloudflare tunnel (https://<random>.trycloudflare.com).
+#
+# Usage:
+#   TRACKER_PASSWORD="our-secret" ./start.sh
+#
+# Optional env:
+#   PORT              local port (default 4000)
+#   TRACKER_PASSWORD  shared family password (default "family" — CHANGE IT)
+#   TRACKER_CURRENCY  currency symbol (default "$")
+#   NO_TUNNEL=1       run locally only, skip the public tunnel
+#
+set -euo pipefail
+cd "$(dirname "$0")"
+
+PORT="${PORT:-4000}"
+export PORT
+export TRACKER_PASSWORD="${TRACKER_PASSWORD:-family}"
+export TRACKER_CURRENCY="${TRACKER_CURRENCY:-$}"
+
+# Persist a session secret so logins survive restarts.
+SECRET_FILE="data/.secret"
+mkdir -p data
+if [ ! -f "$SECRET_FILE" ]; then
+  (head -c32 /dev/urandom | od -An -tx1 | tr -d ' \n') > "$SECRET_FILE" 2>/dev/null || date +%s%N > "$SECRET_FILE"
+fi
+export TRACKER_SECRET="$(cat "$SECRET_FILE")"
+
+cleanup() {
+  [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null || true
+  [ -n "${TUNNEL_PID:-}" ] && kill "$TUNNEL_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+echo "Starting Family Money Tracker on port $PORT ..."
+node server.js &
+SERVER_PID=$!
+sleep 1
+
+if [ "${NO_TUNNEL:-0}" = "1" ]; then
+  echo ""
+  echo "  Local only:  http://localhost:$PORT"
+  echo "  Password:    $TRACKER_PASSWORD"
+  echo ""
+  wait "$SERVER_PID"
+  exit 0
+fi
+
+# --- ensure cloudflared is available -------------------------------------
+if ! command -v cloudflared >/dev/null 2>&1; then
+  echo "cloudflared not found — downloading ..."
+  OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64|amd64) ARCH=amd64 ;;
+    aarch64|arm64) ARCH=arm64 ;;
+  esac
+  DEST="./cloudflared"
+  URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-${OS}-${ARCH}"
+  curl -fsSL -o "$DEST" "$URL" && chmod +x "$DEST"
+  CF="$DEST"
+else
+  CF="cloudflared"
+fi
+
+echo "Opening public Cloudflare tunnel ..."
+TUNLOG="$(mktemp)"
+# http2 protocol is friendlier to restrictive/proxied networks than QUIC/UDP.
+"$CF" tunnel --no-autoupdate --protocol http2 --url "http://localhost:$PORT" >"$TUNLOG" 2>&1 &
+TUNNEL_PID=$!
+
+# --- wait for the public URL to appear -----------------------------------
+URL=""
+for i in $(seq 1 30); do
+  URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNLOG" | head -1 || true)"
+  [ -n "$URL" ] && break
+  if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then break; fi
+  sleep 1
+done
+
+echo ""
+echo "============================================================"
+if [ -n "$URL" ]; then
+  echo "  Family Money Tracker is LIVE"
+  echo ""
+  echo "  Public link:  $URL"
+  echo "  Password:     $TRACKER_PASSWORD"
+  echo ""
+  echo "  Share the link + password with your family."
+else
+  echo "  Could not open the public tunnel. Details:"
+  echo ""
+  sed 's/^/    /' "$TUNLOG" | tail -n 8
+  echo ""
+  echo "  The app is still running locally at http://localhost:$PORT"
+  echo "  (A 403 here means the network blocks api.trycloudflare.com.)"
+fi
+echo "============================================================"
+echo "  Press Ctrl+C to stop."
+echo ""
+
+wait "$SERVER_PID"

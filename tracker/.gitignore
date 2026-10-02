@@ -1,0 +1,6 @@
+# runtime data & secrets — never commit family financial data
+data/
+*.tmp
+
+# local cloudflared binary (downloaded on demand by start.sh)
+cloudflared

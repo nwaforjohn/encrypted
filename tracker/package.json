@@ -1,0 +1,14 @@
+{
+  "name": "family-money-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A shared family budget & expense tracker, exposable over a public Cloudflare tunnel. Zero runtime dependencies.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "tunnel": "bash start.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
